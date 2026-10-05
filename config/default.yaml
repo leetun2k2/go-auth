@@ -1,0 +1,14 @@
+logger:
+  production: true
+
+server:
+  name: "go-auth"
+  production: true
+  adminAddr: ":4040"
+  shutdownTimeout: 15s
+
+restful_api:
+  production: true
+  addr: ":5050"
+  trustedProxies: []
+  corsAllowOrigins: []
