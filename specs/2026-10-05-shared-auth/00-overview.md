@@ -21,6 +21,8 @@ flowchart LR
 
 This index defines build order, dependencies, milestones, and the gates between independently implementable specs.
 
+Implementation work and status are tracked in [14 Implementation tasks](14-implementation-tasks.md).
+
 ## Scope
 
 ### In scope
