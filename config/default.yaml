@@ -10,7 +10,6 @@ server:
 restful_api:
   production: true
   addr: ":5050"
-  trustedProxies: []
   corsAllowOrigins: []
 
 # PostgreSQL connection configuration (required runtime dependency).
@@ -21,11 +20,41 @@ postgres:
   url: ""
 
 # Redis configuration (optional runtime dependency, disabled by default).
-# Environment overrides: REDIS__ENABLED, REDIS__CONFIG__ADDR (or REDIS__ADDR),
-# REDIS__CONFIG__PASSWORD (or REDIS__PASSWORD), REDIS__CONFIG__USERNAME (or REDIS__USERNAME),
-# REDIS__CONFIG__DB (or REDIS__DB).
+# Environment overrides: REDIS__ENABLED, REDIS__CONFIG__ADDR,
+# REDIS__CONFIG__PASSWORD, REDIS__CONFIG__USERNAME, REDIS__CONFIG__DB.
 redis:
   enabled: false
   config:
     addr: "127.0.0.1:6379"
     password: ""
+
+# Shared Auth runtime configuration.
+# Environment overrides: AUTH__ISSUER, AUTH__SESSION_TTL, AUTH__CODE_TTL,
+# AUTH__LOGIN_ATTEMPT_TTL,
+# AUTH__PROVIDERS__GOOGLE__CLIENT_ID, AUTH__PROVIDERS__GOOGLE__CLIENT_SECRET,
+# AUTH__PROVIDERS__GITHUB__CLIENT_ID, AUTH__PROVIDERS__GITHUB__CLIENT_SECRET,
+# AUTH__SIGNING_KEY__KEY_ID, AUTH__SIGNING_KEY__PRIVATE_KEY_PEM (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH).
+# Provider secrets and the signing key have no defaults: they must come from
+# environment variables or an approved secret store, never from this file.
+auth:
+  issuer: ""
+  sessionTtl: 720h
+  codeTtl: 2m
+  loginAttemptTtl: 10m
+  providers:
+    google:
+      enabled: false
+      clientId: ""
+      clientSecret: ""
+      redirectUrl: ""
+      scopes: []
+    github:
+      enabled: false
+      clientId: ""
+      clientSecret: ""
+      redirectUrl: ""
+      scopes: []
+  signingKey:
+    keyId: ""
+    privateKeyPem: ""
+    privateKeyPath: ""

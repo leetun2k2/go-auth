@@ -26,6 +26,7 @@ Define the minimal current-user capability and its authentication semantics.
 |---|---|---|
 | Current-user lookup | **Ready** | Required core capability. |
 | Minimal shared profile response | **Ready** | Fields are explicit in the product goal. |
+| Profile update | **Ready** | Authenticated user updates shared display name and avatar URL. |
 | Unauthenticated response | **Ready** | Must be distinct and predictable. |
 
 ### Out of scope
@@ -77,7 +78,43 @@ Define the minimal current-user capability and its authentication semantics.
 
 ## Endpoint contract
 
+### `GET /auth/me`
+
 - `GET /auth/me` is server-to-server and accepts the JWT as `Authorization: Bearer <token>`.
 - A valid session returns `200` with `user_id`, `identity_id`, `email`, `display_name`, and `avatar_url`.
-- Missing, invalid, expired, or revoked tokens return `401` with no profile.
+- Missing, invalid, expired, or revoked tokens return `401` with `{"error":"unauthorized"}`.
+- Every response uses `Cache-Control: no-store`.
+
+### `PATCH /auth/profile`
+
+- `PATCH /auth/profile` accepts the JWT as `Authorization: Bearer <token>`.
+- Request body accepts JSON with pointer semantics:
+  ```json
+  {
+    "display_name": "New name",
+    "avatar_url": "https://example.com/avatar.png"
+  }
+  ```
+- Omitted fields keep current values; empty strings clear the field.
+- Validation:
+  - `display_name` is trimmed and must not exceed 255 characters.
+  - `avatar_url` must be empty or a valid absolute HTTPS URL.
+  - Rejects requests when both fields are omitted (HTTP 400 `{"error":"invalid_request"}`).
+  - `canonical_email` cannot be modified through this endpoint.
+- Authentication:
+  - Reuses session validation rules from `GET /auth/me`.
+  - Missing, invalid, expired, or revoked sessions return HTTP 401 `{"error":"unauthorized"}`.
+  - Storage failures return HTTP 500 `{"error":"temporarily_unavailable"}`.
+- Provider overwrite protection:
+  - Marks supplied fields as user-managed (`display_name_managed`, `avatar_url_managed` = true).
+  - Later OAuth provider logins only refresh fields where managed is false.
+- Response 200 returns:
+  ```json
+  {
+    "user_id": "...",
+    "email": "...",
+    "display_name": "...",
+    "avatar_url": "..."
+  }
+  ```
 - Every response uses `Cache-Control: no-store`.

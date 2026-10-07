@@ -1,18 +1,15 @@
 package usecase
 
 import (
-	"github.com/leetun2k2/go-auth/config"
-	"github.com/leetun2k2/go-bedrock/logx"
+	"github.com/leetun2k2/go-auth/internal/service"
 )
 
 type Usecase struct {
-	cfg    *config.Config
-	logger *logx.Logger
+	service *service.Service
 }
 
-func New(cfg *config.Config, logger *logx.Logger) *Usecase {
+func New(service *service.Service) *Usecase {
 	return &Usecase{
-		cfg:    cfg,
-		logger: logger,
+		service: service,
 	}
 }

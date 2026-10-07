@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS auth_codes;
+DROP TABLE IF EXISTS login_attempts;
+DROP TABLE IF EXISTS external_identities;
+DROP TABLE IF EXISTS profiles;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS clients;

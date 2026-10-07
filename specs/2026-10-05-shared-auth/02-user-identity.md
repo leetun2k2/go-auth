@@ -26,13 +26,14 @@ Define the minimal shared user record and invariants that prevent provider detai
 |---|---|---|
 | Stable internal user ID | **Ready** | Required as the canonical downstream identity. |
 | Shared profile | **Ready** | Limited to email, display name, and avatar. |
-| Profile refresh policy | **Ready** | Verified claims may set canonical email; the current linked provider may refresh display name and avatar. |
+| Editable shared profile | **Ready** | Authenticated user may update display name and avatar; manual edits become user-managed to protect against provider overwrites. |
+| Profile refresh policy | **Ready** | Verified claims may set canonical email; the current linked provider may refresh unmanaged display name and avatar. |
 | Identity format | **Ready** | Every user primary key is UUIDv7 and remains immutable. |
 
 ### Out of scope
 
 - Product-specific profiles and user preferences.
-- User profile editing, account deletion, and account recovery.
+- Account deletion and account recovery.
 - Roles, status in a product, billing, and entitlements.
 
 ## Responsibilities
@@ -82,5 +83,7 @@ Define the minimal shared user record and invariants that prevent provider detai
 - Store canonical email only from a verified provider claim, normalized by trimming surrounding space and lowercasing.
 - Enforce uniqueness for non-null normalized canonical email so verified-email linking has one target.
 - Keep canonical email stable when an existing linked identity later reports a different email. A new identity may link only to the stored canonical value.
-- Refresh display name and avatar from the successfully authenticated linked identity when non-empty.
+- Refresh display name and avatar from the successfully authenticated linked identity when non-empty, only for fields that are not user-managed (`display_name_managed` / `avatar_url_managed` = false).
+- A manual profile update via `PATCH /auth/profile` marks the supplied fields as user-managed (`display_name_managed` / `avatar_url_managed` = true). Provider login never overwrites user-managed values.
+- Canonical email remains read-only and cannot be modified via profile endpoints.
 - A shared disabled-user state is outside v1; products still own local access decisions.

@@ -27,20 +27,20 @@ flowchart LR
 
 | ID | Task | Status | Depends on | Owner | PR |
 |---|---|---|---|---|---|
-| AUTH-001 | Runtime config and PostgreSQL pool | TODO | None | — | — |
-| AUTH-002 | Schema and first-party clients | TODO | AUTH-001 | — | — |
-| AUTH-003 | Security primitives and client auth | TODO | AUTH-001 | — | — |
-| AUTH-004 | Login attempt and OAuth start | TODO | AUTH-002, AUTH-003 | — | — |
-| AUTH-005 | Google provider authentication | TODO | AUTH-004 | — | — |
-| AUTH-006 | GitHub provider authentication | TODO | AUTH-004 | — | — |
-| AUTH-007 | Identity resolution transaction | TODO | AUTH-002, AUTH-004 | — | — |
-| AUTH-008 | Provider callback and auth code | TODO | AUTH-005, AUTH-006, AUTH-007 | — | — |
-| AUTH-009 | Code exchange and session JWT | TODO | AUTH-002, AUTH-003, AUTH-008 | — | — |
-| AUTH-010 | Current user endpoint | TODO | AUTH-009 | — | — |
-| AUTH-011 | Logout endpoint | TODO | AUTH-003, AUTH-009 | — | — |
-| AUTH-012 | Logs, health, readiness, and hardening | TODO | AUTH-010, AUTH-011 | — | — |
-| AUTH-013 | Integrated acceptance validation | TODO | AUTH-005–AUTH-012 | — | — |
-| AUTH-014 | Deployment and controlled rollout | TODO | AUTH-012, AUTH-013 | — | — |
+| AUTH-001 | Runtime config and PostgreSQL pool | DONE | None | claude | AUTH-001 |
+| AUTH-002 | Schema and first-party clients | DONE | AUTH-001 | claude | AUTH-002 |
+| AUTH-003 | Security primitives and client auth | DONE | AUTH-001 | claude | AUTH-003 |
+| AUTH-004 | Login attempt and OAuth start | DONE | AUTH-002, AUTH-003 | claude | AUTH-004 |
+| AUTH-005 | Google provider authentication | DONE | AUTH-004 | claude | AUTH-005 |
+| AUTH-006 | GitHub provider authentication | DONE | AUTH-004 | claude | AUTH-006 |
+| AUTH-007 | Identity resolution transaction | DONE | AUTH-002, AUTH-004 | claude | AUTH-007 |
+| AUTH-008 | Provider callback and auth code | DONE | AUTH-005, AUTH-006, AUTH-007 | claude | AUTH-008 |
+| AUTH-009 | Code exchange and session JWT | DONE | AUTH-002, AUTH-003, AUTH-008 | claude | AUTH-009 |
+| AUTH-010 | Current user endpoint | DONE | AUTH-009 | claude | AUTH-010 |
+| AUTH-011 | Logout endpoint | DONE | AUTH-003, AUTH-009 | claude | AUTH-011 |
+| AUTH-012 | Logs, health, readiness, and hardening | DONE | AUTH-010, AUTH-011 | claude | AUTH-012 |
+| AUTH-013 | Integrated acceptance validation | BLOCKED | AUTH-005–AUTH-012 | claude | AUTH-013 |
+| AUTH-014 | Deployment and controlled rollout | BLOCKED | AUTH-012, AUTH-013 | claude | AUTH-014 |
 
 ## Dependency graph
 
@@ -69,7 +69,7 @@ flowchart TD
 
 ## Task details
 
-### [ ] AUTH-001 — Runtime config and PostgreSQL pool
+### [x] AUTH-001 — Runtime config and PostgreSQL pool
 
 **Outcome:** The service starts with validated auth configuration and a managed `pgx` pool.
 
@@ -88,7 +88,7 @@ flowchart TD
 
 **Trace:** Specs 01, 10, 11.
 
-### [ ] AUTH-002 — Schema and first-party clients
+### [x] AUTH-002 — Schema and first-party clients
 
 **Outcome:** PostgreSQL enforces the core identity and session invariants.
 
@@ -107,7 +107,7 @@ flowchart TD
 
 **Trace:** Specs 01–03, 05, 06.
 
-### [ ] AUTH-003 — Security primitives and client auth
+### [x] AUTH-003 — Security primitives and client auth
 
 **Outcome:** Later endpoints share one strict security implementation.
 
@@ -127,7 +127,7 @@ flowchart TD
 
 **Trace:** Specs 01, 06, 10.
 
-### [ ] AUTH-004 — Login attempt and OAuth start
+### [x] AUTH-004 — Login attempt and OAuth start
 
 **Outcome:** `GET /auth/login/:provider` starts only a valid, bound login attempt.
 
@@ -146,7 +146,7 @@ flowchart TD
 
 **Trace:** Specs 04, 08, 10.
 
-### [ ] AUTH-005 — Google provider authentication
+### [x] AUTH-005 — Google provider authentication
 
 **Outcome:** Google callback data becomes one trusted normalized claim set.
 
@@ -165,7 +165,7 @@ flowchart TD
 
 **Trace:** Specs 04, 08, 10.
 
-### [ ] AUTH-006 — GitHub provider authentication
+### [x] AUTH-006 — GitHub provider authentication
 
 **Outcome:** GitHub callback data becomes the same trusted normalized claim set.
 
@@ -184,7 +184,7 @@ flowchart TD
 
 **Trace:** Specs 04, 08, 10.
 
-### [ ] AUTH-007 — Identity resolution transaction
+### [x] AUTH-007 — Identity resolution transaction
 
 **Outcome:** Trusted provider claims resolve to one stable user without unsafe merges.
 
@@ -205,7 +205,7 @@ flowchart TD
 
 **Trace:** Specs 02, 03, 05, 10.
 
-### [ ] AUTH-008 — Provider callback and authorization code
+### [x] AUTH-008 — Provider callback and authorization code
 
 **Outcome:** A valid provider callback returns only a short-lived product code through the browser.
 
@@ -225,7 +225,7 @@ flowchart TD
 
 **Trace:** Specs 04, 05, 08, 10.
 
-### [ ] AUTH-009 — Code exchange and session JWT
+### [x] AUTH-009 — Code exchange and session JWT
 
 **Outcome:** `POST /auth/exchange` consumes one code and returns one active 30-day session.
 
@@ -246,7 +246,7 @@ flowchart TD
 
 **Trace:** Specs 06, 08, 10.
 
-### [ ] AUTH-010 — Current user endpoint
+### [x] AUTH-010 — Current user endpoint
 
 **Outcome:** `GET /auth/me` returns the minimal profile only for an active bound session.
 
@@ -265,7 +265,7 @@ flowchart TD
 
 **Trace:** Specs 06, 07, 10.
 
-### [ ] AUTH-011 — Logout endpoint
+### [x] AUTH-011 — Logout endpoint
 
 **Outcome:** `POST /auth/logout` makes the current session unusable before success.
 
@@ -285,7 +285,7 @@ flowchart TD
 
 **Trace:** Specs 06, 09, 10.
 
-### [ ] AUTH-012 — Logs, health, readiness, and hardening
+### [x] AUTH-012 — Logs, health, readiness, and hardening
 
 **Outcome:** The service is safe to operate and exposes clear dependency state.
 
@@ -327,6 +327,24 @@ flowchart TD
 
 **Trace:** Spec 12 and acceptance criteria from specs 01–11.
 
+**Status: BLOCKED**
+
+**What was validated in this environment:**
+
+- `gofmt -l .` reports no formatting diffs on any tracked Go file.
+- `go build ./...` succeeds with 0 errors.
+- `go vet ./...` succeeds with 0 errors.
+- `go build ./cmd/migrate` succeeds; migration SQL files are present and embedded (`migrations/000001_create_auth_schema.{up,down}.sql`).
+- Handlers, repositories, providers, and security primitives for specs 01–12 are implemented and match the traced scope (login start, callback, exchange, me, logout, health/ready, structured logging/redaction).
+
+**Exact blocker:**
+
+- No PostgreSQL instance is reachable in this environment (no local server, no `docker-compose`/Makefile-provisioned database, no running container) — database integration, concurrency, expiry, and replay checks against real PostgreSQL cannot be executed here.
+- No Google or GitHub OAuth client credentials, and no staging accounts or staging HTTPS redirect URIs, are configured in this environment — the spec's fixed validation approach requires "team-controlled Google and GitHub staging accounts and exact HTTPS redirect URIs registered to staging client rows," which cannot be provisioned from this workspace.
+- Per Rule 7, this task cannot be marked DONE: the done check "Both real provider flows pass with exact staging redirect URIs" has no recorded pass, and the concurrency/database-integration checks have not been executed against a real PostgreSQL instance.
+
+**To unblock:** provision a reachable PostgreSQL instance (or expose one to this environment), and provide real Google and GitHub OAuth client credentials plus staging accounts and their registered HTTPS redirect URIs.
+
 ### [ ] AUTH-014 — Deployment and controlled rollout
 
 **Outcome:** Shared Auth reaches steady state through reversible provider and client gates.
@@ -346,6 +364,17 @@ flowchart TD
 - Every product keys local data by JWT `sub` and keeps authorization local.
 
 **Trace:** Spec 13.
+
+**Status: BLOCKED**
+
+**Exact blocker:**
+
+- This task requires provisioning production/staging infrastructure (PostgreSQL, secrets store, ES256 keys, provider apps, first-party clients) and deployment access that are not available in this local workspace.
+- Each rollout stage ("Deploy disabled" → "Team pilot" → "One product" → "More products" → "Steady state") requires a 24-hour observation window per stage, which cannot be fulfilled inside this session.
+- Per Rule 8, no deployment or external rollout may be performed without explicit approval; no such approval has been given.
+- Per Rule 7, this task cannot be marked DONE: it depends on AUTH-013 (itself BLOCKED) and on external infrastructure, provider apps, staging accounts, deployment access, and a 24-hour observation period that are not available here.
+
+**To unblock:** complete AUTH-013 first, obtain explicit approval for deployment, and provide production/staging infrastructure access (PostgreSQL, secrets, ES256 keys, provider apps, deployment pipeline).
 
 ## Suggested work order
 

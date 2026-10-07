@@ -65,7 +65,10 @@ func run(_ []string) error {
 		redisClient = cache.Client()
 	}
 
-	app := transport.NewApplication(cfg, logger, db.Pool(), redisClient)
+	app, err := transport.NewApplication(cfg, logger, db.Pool(), redisClient)
+	if err != nil {
+		return fmt.Errorf("initialize application: %w", err)
+	}
 	if err := app.RegisterRestfulApi(api.Engine()); err != nil {
 		return fmt.Errorf("register restful api routes: %w", err)
 	}

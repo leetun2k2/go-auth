@@ -1,34 +1,39 @@
 package transport
 
 import (
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/leetun2k2/go-auth/config"
 	"github.com/leetun2k2/go-auth/internal/handler"
 	"github.com/leetun2k2/go-auth/internal/repository"
 	"github.com/leetun2k2/go-auth/internal/service"
 	"github.com/leetun2k2/go-auth/internal/usecase"
+	"github.com/leetun2k2/go-auth/pkg/security"
 	"github.com/leetun2k2/go-bedrock/logx"
 	"github.com/redis/go-redis/v9"
 )
 
 type Application struct {
-	Handler    *handler.Handler
-	Usecase    *usecase.Usecase
-	Service    *service.Service
-	Repository *repository.Repository
-
-	Config *config.Config
-	Logger *logx.Logger
+	Handler *handler.Handler
+	Config  *config.Config
+	Logger  *logx.Logger
 }
 
-func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, redis *redis.Client) *Application {
-	return &Application{
-		Handler:    handler.New(cfg, logger),
-		Usecase:    usecase.New(cfg, logger),
-		Service:    service.New(cfg, logger),
-		Repository: repository.New(cfg, logger, db, redis),
+func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, redis *redis.Client) (*Application, error) {
+	repo := repository.New(cfg, logger, db, redis)
 
-		Config: cfg,
-		Logger: logger,
+	tokenManager, err := security.LoadTokenManager(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build session token manager: %w", err)
 	}
+
+	authService := service.New(cfg, logger, repo, tokenManager)
+	authUsecase := usecase.New(authService)
+
+	return &Application{
+		Handler: handler.New(authUsecase),
+		Config:  cfg,
+		Logger:  logger,
+	}, nil
 }

@@ -1,18 +1,15 @@
 package handler
 
 import (
-	"github.com/leetun2k2/go-auth/config"
-	"github.com/leetun2k2/go-bedrock/logx"
+	"github.com/leetun2k2/go-auth/internal/usecase"
 )
 
 type Handler struct {
-	cfg    *config.Config
-	logger *logx.Logger
+	usecase *usecase.Usecase
 }
 
-func New(cfg *config.Config, logger *logx.Logger) *Handler {
+func New(usecase *usecase.Usecase) *Handler {
 	return &Handler{
-		cfg:    cfg,
-		logger: logger,
+		usecase: usecase,
 	}
 }

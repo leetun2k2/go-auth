@@ -1,4 +1,4 @@
-package handler
+package service
 
 import "context"
 
@@ -8,6 +8,6 @@ type HealthOutput struct {
 	Message    string `json:"message,omitempty"`
 }
 
-func (h *Handler) HealthHandler(c context.Context, input *HealthInput) (HealthOutput, error) {
+func (h *Service) Health(c context.Context, input *HealthInput) (HealthOutput, error) {
 	return HealthOutput{StatusCode: 200, Message: "ok"}, nil
 }
