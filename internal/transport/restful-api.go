@@ -15,12 +15,16 @@ func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 
 	engine.GET("/health", app.health)
 	engine.GET("/ready", app.ready)
-	engine.GET("/auth/login/:provider", app.login)
-	engine.GET("/auth/callback/:provider", app.callback)
-	engine.POST("/auth/exchange", app.exchange)
-	engine.GET("/auth/me", app.me)
-	engine.PATCH("/auth/profile", app.updateProfile)
-	engine.POST("/auth/logout", app.logout)
+
+	v1 := engine.Group("/api/auth/v1")
+	{
+		v1.GET("/login/:provider", app.login)
+		v1.GET("/callback/:provider", app.callback)
+		v1.POST("/exchange", app.exchange)
+		v1.GET("/me", app.me)
+		v1.PATCH("/profile", app.updateProfile)
+		v1.POST("/logout", app.logout)
+	}
 	return nil
 }
 
@@ -94,7 +98,7 @@ func (app *Application) callback(c *gin.Context) {
 	c.Redirect(http.StatusFound, output.RedirectURL)
 }
 
-// exchangeRequest is the JSON or form payload for POST /auth/exchange.
+// exchangeRequest is the JSON or form payload for POST /api/auth/v1/exchange.
 // gin.Context.ShouldBind selects the JSON or form binder from the request
 // Content-Type, matching the spec's "JSON or form data" requirement.
 type exchangeRequest struct {

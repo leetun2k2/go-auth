@@ -11,7 +11,7 @@ import (
 )
 
 // LogoutInput is the client credentials and raw Authorization header for
-// POST /auth/logout.
+// POST /api/auth/v1/logout.
 type LogoutInput struct {
 	ClientCredentials   credential.Credentials
 	AuthorizationHeader string

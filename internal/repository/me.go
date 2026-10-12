@@ -20,7 +20,7 @@ var ErrSessionInvalid = errors.New("invalid session")
 // GetActiveSessionAndUser verifies that an active PostgreSQL session binds
 // exactly the user, identity, and client claimed by a session JWT, that the
 // identity is owned by the claimed user, and returns the minimal shared
-// profile for GET /auth/me (spec 06, 07). Any mismatch fails closed with
+// profile for GET /api/auth/v1/me (spec 06, 07). Any mismatch fails closed with
 // ErrSessionInvalid.
 func (r *Repository) GetActiveSessionAndUser(ctx context.Context, sessionID, userID, identityID uuid.UUID, clientID string) (*User, error) {
 	if err := checkActiveSessionBinding(ctx, r.db, sessionID, userID, identityID, clientID); err != nil {

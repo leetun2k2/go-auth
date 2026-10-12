@@ -30,7 +30,7 @@ var (
 )
 
 // LoginInput is the validated set of query parameters for
-// GET /auth/login/:provider.
+// GET /api/auth/v1/login/:provider.
 type LoginInput struct {
 	Provider            string
 	ClientID            string
@@ -178,5 +178,5 @@ func providerCallbackURL(provider string, providerCfg config.ProviderConfig, iss
 	if providerCfg.RedirectURL != "" {
 		return providerCfg.RedirectURL
 	}
-	return fmt.Sprintf("%s/auth/callback/%s", strings.TrimRight(issuer, "/"), provider)
+	return fmt.Sprintf("%s/api/auth/v1/callback/%s", strings.TrimRight(issuer, "/"), provider)
 }

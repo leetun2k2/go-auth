@@ -30,7 +30,7 @@ const (
 var ErrInvalidCallbackRequest = errors.New("invalid callback request")
 
 // CallbackInput is the validated set of path and query parameters for
-// GET /auth/callback/:provider.
+// GET /api/auth/v1/callback/:provider.
 type CallbackInput struct {
 	Provider string
 	State    string

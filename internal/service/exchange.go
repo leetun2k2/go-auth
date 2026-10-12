@@ -27,7 +27,7 @@ var (
 )
 
 // ExchangeInput is the validated set of client credentials and payload
-// fields for POST /auth/exchange.
+// fields for POST /api/auth/v1/exchange.
 type ExchangeInput struct {
 	ClientCredentials credential.Credentials
 	Code              string

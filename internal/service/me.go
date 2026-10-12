@@ -15,13 +15,13 @@ import (
 	"github.com/leetun2k2/go-bedrock/authx/credential"
 )
 
-// ErrUnauthenticated is the single failure mode for GET /auth/me: a
+// ErrUnauthenticated is the single failure mode for GET /api/auth/v1/me: a
 // missing or malformed bearer token, an invalid, expired, or wrong-issuer
 // JWT, and any session or claim binding mismatch all collapse into this so
 // the response never reveals which check failed (spec 07, 10).
 var ErrUnauthenticated = errors.New("unauthenticated")
 
-// MeInput is the raw Authorization header value for GET /auth/me.
+// MeInput is the raw Authorization header value for GET /api/auth/v1/me.
 type MeInput struct {
 	AuthorizationHeader string
 }
