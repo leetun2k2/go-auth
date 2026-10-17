@@ -29,32 +29,22 @@ redis:
     password: ""
 
 # Shared Auth runtime configuration.
+# Per-client OAuth provider credentials (Google/GitHub) live in the
+# client_providers table, not here -- each first-party client has its own
+# OAuth app registration.
 # Environment overrides: AUTH__ISSUER, AUTH__SESSION_TTL, AUTH__CODE_TTL,
-# AUTH__LOGIN_ATTEMPT_TTL,
-# AUTH__PROVIDERS__GOOGLE__CLIENT_ID, AUTH__PROVIDERS__GOOGLE__CLIENT_SECRET,
-# AUTH__PROVIDERS__GITHUB__CLIENT_ID, AUTH__PROVIDERS__GITHUB__CLIENT_SECRET,
+# AUTH__LOGIN_ATTEMPT_TTL, AUTH__PROVIDER_SECRET_KEY,
 # AUTH__SIGNING_KEY__KEY_ID, AUTH__SIGNING_KEY__PRIVATE_KEY_PEM (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH).
-# Provider secrets and the signing key have no defaults: they must come from
-# environment variables or an approved secret store, never from this file.
+# The provider secret key and the signing key have no defaults: they must
+# come from environment variables or an approved secret store, never from
+# this file.
 auth:
   issuer: ""
-  sessionTtl: 720h
-  codeTtl: 2m
-  loginAttemptTtl: 10m
-  providers:
-    google:
-      enabled: false
-      clientId: ""
-      clientSecret: ""
-      redirectUrl: ""
-      scopes: []
-    github:
-      enabled: false
-      clientId: ""
-      clientSecret: ""
-      redirectUrl: ""
-      scopes: []
-  signingKey:
-    keyId: ""
-    privateKeyPem: ""
-    privateKeyPath: ""
+  session_ttl: 720h
+  code_ttl: 2m
+  login_attempt_ttl: 10m
+  provider_secret_key: ""
+  signing_key:
+    key_id: ""
+    private_key_pem: ""
+    private_key_path: ""

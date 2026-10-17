@@ -8,19 +8,15 @@ import (
 	"github.com/leetun2k2/go-bedrock/authx/provider/google"
 )
 
-// providerFor builds an authx.Provider for the given provider name.
-// One provider object creates the login URL and exchanges the callback.
-func (h *Service) providerFor(providerName string) (provider.Provider, error) {
-	providerCfg, ok := h.supportedProvider(providerName)
-	if !ok {
-		return nil, ErrUnsupportedProvider
-	}
-
+// providerClientFor builds an authx.Provider from a client's resolved
+// (decrypted) OAuth app credentials. One provider object creates the login
+// URL and exchanges the callback.
+func providerClientFor(providerName string, creds *resolvedProviderCreds) (provider.Provider, error) {
 	switch providerName {
 	case "google":
 		p, err := google.New(google.Config{
-			ClientID:     providerCfg.ClientID,
-			ClientSecret: providerCfg.ClientSecret,
+			ClientID:     creds.ClientID,
+			ClientSecret: creds.ClientSecret,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("init google provider: %w", err)
@@ -28,8 +24,8 @@ func (h *Service) providerFor(providerName string) (provider.Provider, error) {
 		return p, nil
 	case "github":
 		p, err := github.New(github.Config{
-			ClientID:     providerCfg.ClientID,
-			ClientSecret: providerCfg.ClientSecret,
+			ClientID:     creds.ClientID,
+			ClientSecret: creds.ClientSecret,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("init github provider: %w", err)

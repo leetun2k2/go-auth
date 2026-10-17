@@ -35,29 +35,21 @@ type RedisConfig struct {
 	redisx.Config `json:"config" mapstructure:"config" yaml:"config"`
 }
 
-// ProviderConfig holds OAuth provider configuration for a single external
-// identity provider (e.g. Google, GitHub). ClientID and ClientSecret have no
-// defaults and must be supplied via environment variables or a secret store.
-type ProviderConfig struct {
-	Enabled      bool     `json:"enabled" mapstructure:"enabled" yaml:"enabled"`
-	ClientID     string   `json:"clientId" mapstructure:"clientId" yaml:"clientId"`
-	ClientSecret string   `json:"clientSecret" mapstructure:"clientSecret" yaml:"clientSecret"`
-	RedirectURL  string   `json:"redirectUrl" mapstructure:"redirectUrl" yaml:"redirectUrl"`
-	Scopes       []string `json:"scopes" mapstructure:"scopes" yaml:"scopes"`
-}
-
 // SigningKeyConfig holds the ES256 JWT signing key used to issue and verify
 // session tokens. PrivateKeyPEM/PrivateKeyPath have no defaults and must be
 // supplied via environment variables or a secret store.
 type SigningKeyConfig struct {
-	KeyID          string `json:"keyId" mapstructure:"keyId" yaml:"keyId"`
-	PrivateKeyPEM  string `json:"privateKeyPem" mapstructure:"privateKeyPem" yaml:"privateKeyPem"`
-	PrivateKeyPath string `json:"privateKeyPath" mapstructure:"privateKeyPath" yaml:"privateKeyPath"`
+	KeyID          string `json:"keyId" mapstructure:"key_id" yaml:"key_id"`
+	PrivateKeyPEM  string `json:"privateKeyPem" mapstructure:"private_key_pem" yaml:"private_key_pem"`
+	PrivateKeyPath string `json:"privateKeyPath" mapstructure:"private_key_path" yaml:"private_key_path"`
 }
 
 // AuthConfig holds Shared Auth specific runtime configuration: the public
-// issuer identity, environment-specific TTLs, provider credentials, and the
-// JWT signing key.
+// issuer identity, environment-specific TTLs, the key used to encrypt
+// per-client provider secrets stored in the database, and the JWT signing
+// key. Per-client OAuth provider credentials (Google/GitHub client
+// id/secret/redirect_url) live in the client_providers table, not
+// here, since each first-party client has its own OAuth app registration.
 //
 // Environment variable overrides:
 //
@@ -65,19 +57,16 @@ type SigningKeyConfig struct {
 //	AUTH__SESSION_TTL=720h
 //	AUTH__CODE_TTL=2m
 //	AUTH__LOGIN_ATTEMPT_TTL=10m
-//	AUTH__PROVIDERS__GOOGLE__CLIENT_ID=...
-//	AUTH__PROVIDERS__GOOGLE__CLIENT_SECRET=...
-//	AUTH__PROVIDERS__GITHUB__CLIENT_ID=...
-//	AUTH__PROVIDERS__GITHUB__CLIENT_SECRET=...
+//	AUTH__PROVIDER_SECRET_KEY=... (base64-encoded 32-byte AES-256-GCM key)
 //	AUTH__SIGNING_KEY__KEY_ID=...
 //	AUTH__SIGNING_KEY__PRIVATE_KEY_PEM=... (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH)
 type AuthConfig struct {
-	Issuer          string                    `json:"issuer" mapstructure:"issuer" yaml:"issuer"`
-	SessionTTL      time.Duration             `json:"sessionTtl" mapstructure:"sessionTtl" yaml:"sessionTtl"`
-	CodeTTL         time.Duration             `json:"codeTtl" mapstructure:"codeTtl" yaml:"codeTtl"`
-	LoginAttemptTTL time.Duration             `json:"loginAttemptTtl" mapstructure:"loginAttemptTtl" yaml:"loginAttemptTtl"`
-	Providers       map[string]ProviderConfig `json:"providers" mapstructure:"providers" yaml:"providers"`
-	SigningKey      SigningKeyConfig          `json:"signingKey" mapstructure:"signingKey" yaml:"signingKey"`
+	Issuer            string           `json:"issuer" mapstructure:"issuer" yaml:"issuer"`
+	SessionTTL        time.Duration    `json:"sessionTtl" mapstructure:"session_ttl" yaml:"session_ttl"`
+	CodeTTL           time.Duration    `json:"codeTtl" mapstructure:"code_ttl" yaml:"code_ttl"`
+	LoginAttemptTTL   time.Duration    `json:"loginAttemptTtl" mapstructure:"login_attempt_ttl" yaml:"login_attempt_ttl"`
+	ProviderSecretKey string           `json:"providerSecretKey" mapstructure:"provider_secret_key" yaml:"provider_secret_key"`
+	SigningKey        SigningKeyConfig `json:"signingKey" mapstructure:"signing_key" yaml:"signing_key"`
 }
 
 // Config holds the complete runtime configuration.

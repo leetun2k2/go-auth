@@ -163,7 +163,7 @@ VALUES ($1, $2, $3, $4, $5)`
 
 func findUserByID(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*User, error) {
 	const query = `
-SELECT u.id, u.canonical_email, COALESCE(p.display_name, ''), COALESCE(p.avatar_url, '')
+SELECT u.id, COALESCE(u.canonical_email, ''), COALESCE(p.display_name, ''), COALESCE(p.avatar_url, '')
 FROM users AS u
 LEFT JOIN profiles AS p ON p.user_id = u.id
 WHERE u.id = $1`

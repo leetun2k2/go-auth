@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -17,12 +14,19 @@ import (
 
 // ErrUnauthenticated is the single failure mode for GET /api/auth/v1/me: a
 // missing or malformed bearer token, an invalid, expired, or wrong-issuer
-// JWT, and any session or claim binding mismatch all collapse into this so
-// the response never reveals which check failed (spec 07, 10).
+// JWT, invalid calling-client credentials, and any session or claim binding
+// mismatch all collapse into this so the response never reveals which check
+// failed (spec 07, 10).
 var ErrUnauthenticated = errors.New("unauthenticated")
 
-// MeInput is the raw Authorization header value for GET /api/auth/v1/me.
+// MeInput is the calling backend's client credentials and the raw
+// Authorization header for GET /api/auth/v1/me. ClientCredentials identify
+// and authenticate the backend making the call; the session JWT's audience
+// must match that backend's client_id (RFC 8725 -- aud identifies the
+// intended recipient, so it must be checked against who is actually
+// calling, not trusted from the token's own unverified claim).
 type MeInput struct {
+	ClientCredentials   credential.Credentials
 	AuthorizationHeader string
 }
 
@@ -43,22 +47,32 @@ type authenticatedSession struct {
 	IdentityID string
 }
 
-func (h *Service) authenticateSession(ctx context.Context, authHeader string) (*authenticatedSession, error) {
+// authenticateSession authenticates the calling backend via clientCreds,
+// then verifies the session JWT is addressed to that same client (aud ==
+// client_id) before trusting its claims. The token's own unverified aud is
+// never used as the expected audience: a caller presenting a token issued
+// for a different client must be rejected, not merely have its
+// self-reported audience echoed back as "expected" (RFC 8725 section 2.8).
+func (h *Service) authenticateSession(ctx context.Context, clientCreds credential.Credentials, authHeader string) (*authenticatedSession, error) {
+	client, err := h.authenticateClient(ctx, clientCreds)
+	if err != nil {
+		if errors.Is(err, ErrInvalidClient) {
+			h.logAuthEvent(ctx, clientCreds.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
+			return nil, ErrUnauthenticated
+		}
+		h.logAuthEvent(ctx, clientCreds.ClientID, "", observability.StageSessionValidate, observability.StatusFailure)
+		return nil, fmt.Errorf("authenticate calling client: %w", err)
+	}
+
 	token, ok := credential.ExtractBearerToken(authHeader)
 	if !ok {
-		h.logAuthEvent(ctx, "", "", observability.StageSessionValidate, observability.StatusDenied)
+		h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
 		return nil, ErrUnauthenticated
 	}
 
-	aud, err := extractUnverifiedAudience(token)
+	claims, err := h.tokenManager.Verify(token, client.ClientID)
 	if err != nil {
-		h.logAuthEvent(ctx, "", "", observability.StageSessionValidate, observability.StatusDenied)
-		return nil, ErrUnauthenticated
-	}
-
-	claims, err := h.tokenManager.Verify(token, aud)
-	if err != nil {
-		h.logAuthEvent(ctx, aud, "", observability.StageSessionValidate, observability.StatusDenied)
+		h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
 		return nil, ErrUnauthenticated
 	}
 
@@ -67,24 +81,24 @@ func (h *Service) authenticateSession(ctx context.Context, authHeader string) (*
 
 	userID, identityID, sessionID, err := parseClaimUUIDs(claims.Subject, identityIDStr, sessionIDStr)
 	if err != nil {
-		h.logAuthEvent(ctx, claims.Audience, "", observability.StageSessionValidate, observability.StatusDenied)
+		h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
 		return nil, ErrUnauthenticated
 	}
 
-	user, err := h.repo.GetActiveSessionAndUser(ctx, sessionID, userID, identityID, claims.Audience)
+	user, err := h.repo.GetActiveSessionAndUser(ctx, sessionID, userID, identityID, client.ClientID)
 	if err != nil {
 		if errors.Is(err, repository.ErrSessionInvalid) {
-			h.logAuthEvent(ctx, claims.Audience, "", observability.StageSessionValidate, observability.StatusDenied)
+			h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
 			return nil, ErrUnauthenticated
 		}
-		h.logAuthEvent(ctx, claims.Audience, "", observability.StageSessionValidate, observability.StatusFailure)
+		h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusFailure)
 		return nil, fmt.Errorf("get active session and user: %w", err)
 	}
 
-	h.logAuthEvent(ctx, claims.Audience, "", observability.StageSessionValidate, observability.StatusSuccess)
+	h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusSuccess)
 	return &authenticatedSession{
 		User:       user,
-		Audience:   claims.Audience,
+		Audience:   client.ClientID,
 		IdentityID: identityIDStr,
 	}, nil
 }
@@ -95,7 +109,7 @@ func (h *Service) authenticateSession(ctx context.Context, authHeader string) (*
 // claimed user, identity, and client, and an identity owned by that user,
 // before returning the minimal shared profile.
 func (h *Service) Me(ctx context.Context, input *MeInput) (MeOutput, error) {
-	session, err := h.authenticateSession(ctx, input.AuthorizationHeader)
+	session, err := h.authenticateSession(ctx, input.ClientCredentials, input.AuthorizationHeader)
 	if err != nil {
 		return MeOutput{}, err
 	}
@@ -123,25 +137,4 @@ func parseClaimUUIDs(subject, identityID, sessionID string) (userUUID, identityU
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
 	return userUUID, identityUUID, sessionUUID, nil
-}
-
-func extractUnverifiedAudience(tokenStr string) (string, error) {
-	parts := strings.Split(tokenStr, ".")
-	if len(parts) != 3 {
-		return "", errors.New("invalid jwt token format")
-	}
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", err
-	}
-	var payload struct {
-		Audience string `json:"aud"`
-	}
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(payload.Audience) == "" {
-		return "", errors.New("missing audience in token")
-	}
-	return payload.Audience, nil
 }

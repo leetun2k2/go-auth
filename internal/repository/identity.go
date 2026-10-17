@@ -141,9 +141,12 @@ WHERE user_id = $3`
 }
 
 // linkOrCreateIdentity handles a provider subject seen for the first time.
-// A present, provider-verified email may link to an existing canonical-email
-// match; otherwise a new user is created. Absent or unverified email always
-// creates a distinct user (spec 05).
+// It never auto-links to an existing user by email match: a verified email
+// can change ownership at the provider, so trusting it alone to merge a new
+// provider identity into an existing account would allow account takeover.
+// Every first-seen provider subject gets its own distinct user; explicit,
+// authenticated account linking is a separate concern for a future flow
+// (spec 05).
 func linkOrCreateIdentity(ctx context.Context, tx pgx.Tx, claims *provider.Identity) (uuid.UUID, uuid.UUID, error) {
 	if claims.Email == "" || !claims.EmailVerified {
 		return createUserWithIdentity(ctx, tx, "", claims)
@@ -151,63 +154,34 @@ func linkOrCreateIdentity(ctx context.Context, tx pgx.Tx, claims *provider.Ident
 
 	canonical := provider.NormalizeEmail(claims.Email)
 
-	existingUser, err := findUserByCanonicalEmail(ctx, tx, canonical)
+	taken, err := canonicalEmailTaken(ctx, tx, canonical)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-
-	if existingUser == nil {
-		return createUserWithIdentity(ctx, tx, canonical, claims)
+	if taken {
+		return createUserWithIdentity(ctx, tx, "", claims)
 	}
 
-	identityID, err := insertExternalIdentity(ctx, tx, existingUser.ID, claims)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, err
-	}
-
-	if err := fillEmptyUserProfile(ctx, tx, existingUser.ID, claims); err != nil {
-		return uuid.Nil, uuid.Nil, err
-	}
-
-	return existingUser.ID, identityID, nil
+	return createUserWithIdentity(ctx, tx, canonical, claims)
 }
 
-func findUserByCanonicalEmail(ctx context.Context, tx pgx.Tx, canonicalEmail string) (*User, error) {
-	const query = `
-SELECT u.id, u.canonical_email, COALESCE(p.display_name, ''), COALESCE(p.avatar_url, '')
-FROM users AS u
-LEFT JOIN profiles AS p ON p.user_id = u.id
-WHERE u.canonical_email = $1
-FOR UPDATE OF u`
+// canonicalEmailTaken reports whether an existing user already owns
+// canonicalEmail. The row is not locked: callers only use this to decide
+// between reusing or dropping the canonical email on a brand new user, never
+// to write to the existing user's row.
+func canonicalEmailTaken(ctx context.Context, tx pgx.Tx, canonicalEmail string) (bool, error) {
+	const query = `SELECT 1 FROM users WHERE canonical_email = $1`
 
-	var u User
-	err := tx.QueryRow(ctx, query, canonicalEmail).Scan(&u.ID, &u.CanonicalEmail, &u.DisplayName, &u.AvatarURL)
+	var exists int
+	err := tx.QueryRow(ctx, query, canonicalEmail).Scan(&exists)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return false, nil
 		}
-		return nil, fmt.Errorf("find user by canonical email: %w", err)
+		return false, fmt.Errorf("check canonical email taken: %w", err)
 	}
 
-	return &u, nil
-}
-
-// fillEmptyUserProfile sets display_name/avatar_url only when the existing
-// value is empty, the field is not user-managed, and the claim supplies one.
-// It never overwrites a user-managed field or a value the user already has.
-func fillEmptyUserProfile(ctx context.Context, tx pgx.Tx, userID uuid.UUID, claims *provider.Identity) error {
-	const query = `
-UPDATE profiles
-SET display_name = CASE WHEN NOT display_name_managed AND (display_name IS NULL OR display_name = '') AND $1 <> '' THEN $1 ELSE display_name END,
-    avatar_url    = CASE WHEN NOT avatar_url_managed AND (avatar_url IS NULL OR avatar_url = '') AND $2 <> '' THEN $2 ELSE avatar_url END,
-    updated_at    = now()
-WHERE user_id = $3`
-
-	if _, err := tx.Exec(ctx, query, claims.DisplayName, claims.AvatarURL, userID); err != nil {
-		return fmt.Errorf("fill empty user profile: %w", err)
-	}
-
-	return nil
+	return true, nil
 }
 
 // createUserWithIdentity creates a new UUIDv7 user and its first external

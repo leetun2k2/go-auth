@@ -20,11 +20,13 @@ CREATE TABLE users (
 );
 
 CREATE TABLE profiles (
-    user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    display_name    VARCHAR(255),
-    avatar_url      TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    user_id               UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    display_name          VARCHAR(255),
+    avatar_url            TEXT,
+    display_name_managed  BOOLEAN NOT NULL DEFAULT false,
+    avatar_url_managed    BOOLEAN NOT NULL DEFAULT false,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE external_identities (
@@ -88,3 +90,22 @@ CREATE TABLE sessions (
 
 CREATE INDEX sessions_user_id_idx ON sessions (user_id);
 CREATE INDEX sessions_identity_id_idx ON sessions (identity_id);
+
+-- Per-client OAuth provider credentials. Each first-party client can have
+-- its own Google/GitHub OAuth app (different client_id/secret/redirect_url),
+-- since the app's own OAuth console registration is per app, not shared.
+-- Scopes are not configurable here: this service only reads identity
+-- (email/profile), and both provider adapters request a fixed minimal scope
+-- set internally.
+CREATE TABLE client_providers (
+    id                          UUID PRIMARY KEY,
+    client_id                   VARCHAR(64) NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+    provider                    VARCHAR(32) NOT NULL,
+    provider_client_id          VARCHAR(255) NOT NULL,
+    provider_client_secret_enc  TEXT NOT NULL,
+    redirect_url                TEXT NOT NULL,
+    enabled                     BOOLEAN NOT NULL DEFAULT true,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (client_id, provider)
+);

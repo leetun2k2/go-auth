@@ -83,20 +83,22 @@ func (h *Service) Callback(ctx context.Context, input *CallbackInput) (CallbackO
 		return h.failCallback(ctx, attempt, callbackErrorAccessDenied, observability.StatusDenied), nil
 	}
 
-	providerCfg, ok := h.supportedProvider(providerName)
-	if !ok {
+	providerCreds, err := h.resolveProvider(ctx, attempt.ClientID, providerName)
+	if err != nil {
+		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusFailure), nil
+	}
+	if providerCreds == nil {
 		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusDenied), nil
 	}
 
-	p, err := h.providerFor(providerName)
+	p, err := providerClientFor(providerName, providerCreds)
 	if err != nil {
 		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusDenied), nil
 	}
-	callbackURL := providerCallbackURL(providerName, providerCfg, h.cfg.Auth.Issuer)
 
 	identity, err := p.Exchange(ctx, provider.ExchangeRequest{
 		Code:        input.Code,
-		RedirectURI: callbackURL,
+		RedirectURI: providerCreds.RedirectURL,
 		Nonce:       attempt.Nonce,
 	})
 	if err != nil {

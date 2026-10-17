@@ -9,14 +9,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/leetun2k2/go-auth/internal/repository"
+	"github.com/leetun2k2/go-bedrock/authx/credential"
 )
 
 // ErrInvalidProfileRequest indicates that the profile update request payload
 // is malformed, has all fields omitted, or has invalid field values.
 var ErrInvalidProfileRequest = errors.New("invalid profile request")
 
-// UpdateProfileInput carries the caller's authorization header and optional profile fields.
+// UpdateProfileInput carries the calling backend's client credentials, its
+// authorization header, and optional profile fields. See MeInput for why
+// ClientCredentials is required.
 type UpdateProfileInput struct {
+	ClientCredentials   credential.Credentials
 	AuthorizationHeader string
 	DisplayName         *string
 	AvatarURL           *string
@@ -33,7 +37,7 @@ type UpdateProfileOutput struct {
 // UpdateProfile validates the session and mutable profile fields, persists the changes,
 // marks each updated field as user-managed, and returns the updated profile.
 func (h *Service) UpdateProfile(ctx context.Context, input *UpdateProfileInput) (UpdateProfileOutput, error) {
-	session, err := h.authenticateSession(ctx, input.AuthorizationHeader)
+	session, err := h.authenticateSession(ctx, input.ClientCredentials, input.AuthorizationHeader)
 	if err != nil {
 		return UpdateProfileOutput{}, err
 	}

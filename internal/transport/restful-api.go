@@ -3,12 +3,26 @@ package transport
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/leetun2k2/go-auth/internal/handler"
 	"github.com/leetun2k2/go-auth/internal/middleware"
 	"github.com/leetun2k2/go-bedrock/authx/credential"
 )
+
+// extractBearerClientCredentials extracts client credentials for endpoints
+// that also carry a bearer session token in the same Authorization header
+// (me, updateProfile, logout). Basic auth is rejected here: it would consume
+// the Authorization header for client credentials, leaving no room for the
+// bearer token, so callers must use the X-Client-Id/X-Client-Secret header
+// pair alongside Authorization: Bearer <token> instead.
+func extractBearerClientCredentials(r *http.Request) (credential.Credentials, error) {
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Authorization")), "basic ") {
+		return credential.Credentials{}, credential.ErrInvalidClient
+	}
+	return credential.Extract(r)
+}
 
 func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 	engine.Use(middleware.CorrelationID)
@@ -24,6 +38,12 @@ func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 		v1.GET("/me", app.me)
 		v1.PATCH("/profile", app.updateProfile)
 		v1.POST("/logout", app.logout)
+	}
+
+	admin := engine.Group("/api/admin/v1")
+	{
+		admin.PUT("/clients/:client_id", app.upsertClient)
+		admin.PUT("/clients/:client_id/providers/:provider", app.upsertClientProvider)
 	}
 	return nil
 }
@@ -161,14 +181,22 @@ func (app *Application) me(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.Header("Cache-Control", "no-store")
 
-	input := handler.MeInput{AuthorizationHeader: c.GetHeader("Authorization")}
+	creds, err := extractBearerClientCredentials(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	input := handler.MeInput{ClientCredentials: creds, AuthorizationHeader: c.GetHeader("Authorization")}
 
 	output, err := app.Handler.Me(ctx, &input)
 	if err != nil {
-		if !errors.Is(err, handler.ErrUnauthenticated) {
-			app.Logger.Error(ctx, "current user lookup failed", "error", err)
+		if errors.Is(err, handler.ErrUnauthenticated) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
 		}
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		app.Logger.Error(ctx, "current user lookup failed", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporarily_unavailable"})
 		return
 	}
 
@@ -190,17 +218,20 @@ func (app *Application) updateProfile(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.Header("Cache-Control", "no-store")
 
+	creds, err := extractBearerClientCredentials(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	var req updateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if _, ok := credential.ExtractBearerToken(c.GetHeader("Authorization")); !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
 
 	input := handler.UpdateProfileInput{
+		ClientCredentials:   creds,
 		AuthorizationHeader: c.GetHeader("Authorization"),
 		DisplayName:         req.DisplayName,
 		AvatarURL:           req.AvatarURL,
@@ -232,7 +263,7 @@ func (app *Application) logout(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.Header("Cache-Control", "no-store")
 
-	creds, err := credential.Extract(c.Request)
+	creds, err := extractBearerClientCredentials(c.Request)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
 		return
@@ -250,6 +281,87 @@ func (app *Application) logout(c *gin.Context) {
 		}
 		app.Logger.Error(ctx, "logout failed", "error", err)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporarily_unavailable"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+type upsertClientRequest struct {
+	Name         string   `json:"name"`
+	ClientSecret string   `json:"client_secret"`
+	RedirectURIs []string `json:"redirect_uris"`
+}
+
+func (app *Application) upsertClient(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req upsertClientRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+
+	input := handler.UpsertClientInput{
+		AuthorizationHeader: c.GetHeader("Authorization"),
+		ClientID:            c.Param("client_id"),
+		Name:                req.Name,
+		ClientSecret:        req.ClientSecret,
+		RedirectURIs:        req.RedirectURIs,
+	}
+
+	if err := app.Handler.UpsertClient(ctx, &input); err != nil {
+		switch {
+		case errors.Is(err, handler.ErrUnauthenticated):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		case errors.Is(err, handler.ErrInvalidAdminRequest):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		default:
+			app.Logger.Error(ctx, "upsert client failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "temporarily_unavailable"})
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+type upsertClientProviderRequest struct {
+	ProviderClientID     string `json:"provider_client_id"`
+	ProviderClientSecret string `json:"provider_client_secret"`
+	RedirectURL          string `json:"redirect_url"`
+	Enabled              bool   `json:"enabled"`
+}
+
+func (app *Application) upsertClientProvider(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req upsertClientProviderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+
+	input := handler.UpsertClientProviderInput{
+		AuthorizationHeader:  c.GetHeader("Authorization"),
+		ClientID:             c.Param("client_id"),
+		Provider:             c.Param("provider"),
+		ProviderClientID:     req.ProviderClientID,
+		ProviderClientSecret: req.ProviderClientSecret,
+		RedirectURL:          req.RedirectURL,
+		Enabled:              req.Enabled,
+	}
+
+	if err := app.Handler.UpsertClientProvider(ctx, &input); err != nil {
+		switch {
+		case errors.Is(err, handler.ErrUnauthenticated):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		case errors.Is(err, handler.ErrUnsupportedProvider), errors.Is(err, handler.ErrUnknownClient), errors.Is(err, handler.ErrInvalidAdminRequest):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		default:
+			app.Logger.Error(ctx, "upsert client provider failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "temporarily_unavailable"})
+		}
 		return
 	}
 

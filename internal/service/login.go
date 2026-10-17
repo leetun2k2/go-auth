@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/leetun2k2/go-auth/config"
 	"github.com/leetun2k2/go-auth/internal/repository"
 	"github.com/leetun2k2/go-auth/pkg/observability"
+	"github.com/leetun2k2/go-auth/pkg/security"
 	"github.com/leetun2k2/go-bedrock/authx/oauth"
 	"github.com/leetun2k2/go-bedrock/authx/provider"
 )
@@ -50,8 +50,7 @@ type LoginOutput struct {
 // attempt, and returns the provider authorization URL to redirect to.
 func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, error) {
 	providerName := strings.ToLower(strings.TrimSpace(input.Provider))
-	providerCfg, ok := h.supportedProvider(providerName)
-	if !ok {
+	if providerName != "google" && providerName != "github" {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusDenied)
 		return LoginOutput{}, ErrUnsupportedProvider
 	}
@@ -81,6 +80,16 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 		return LoginOutput{}, ErrInvalidRedirectURI
 	}
 
+	providerCreds, err := h.resolveProvider(ctx, input.ClientID, providerName)
+	if err != nil {
+		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
+		return LoginOutput{}, err
+	}
+	if providerCreds == nil {
+		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusDenied)
+		return LoginOutput{}, ErrUnsupportedProvider
+	}
+
 	attempt, err := h.newLoginAttempt(providerName, input)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
@@ -91,15 +100,14 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 		return LoginOutput{}, fmt.Errorf("persist login attempt: %w", err)
 	}
 
-	p, err := h.providerFor(providerName)
+	p, err := providerClientFor(providerName, providerCreds)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
 		return LoginOutput{}, err
 	}
 
-	callbackURL := providerCallbackURL(providerName, providerCfg, h.cfg.Auth.Issuer)
 	redirectURL, err := p.AuthorizationURL(provider.AuthorizationRequest{
-		RedirectURI: callbackURL,
+		RedirectURI: providerCreds.RedirectURL,
 		State:       attempt.State,
 		Nonce:       attempt.Nonce,
 	})
@@ -112,20 +120,36 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 	return LoginOutput{RedirectURL: redirectURL}, nil
 }
 
-func (h *Service) supportedProvider(provider string) (config.ProviderConfig, bool) {
-	if provider != "google" && provider != "github" {
-		return config.ProviderConfig{}, false
+// resolvedProviderCreds is a client's decrypted OAuth app credentials for
+// one provider, ready to build a provider.Provider and its authorization
+// request.
+type resolvedProviderCreds struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+}
+
+// resolveProvider loads and decrypts a client's provider credentials. It
+// returns nil, nil when the client has no enabled row for this provider.
+func (h *Service) resolveProvider(ctx context.Context, clientID, providerName string) (*resolvedProviderCreds, error) {
+	cp, err := h.repo.GetClientProvider(ctx, clientID, providerName)
+	if err != nil {
+		return nil, fmt.Errorf("lookup client provider: %w", err)
 	}
-	if h.cfg.Auth == nil {
-		return config.ProviderConfig{}, false
+	if cp == nil {
+		return nil, nil
 	}
 
-	providerCfg, ok := h.cfg.Auth.Providers[provider]
-	if !ok || !providerCfg.Enabled {
-		return config.ProviderConfig{}, false
+	secret, err := security.DecryptProviderSecret(h.cfg.Auth.ProviderSecretKey, cp.ProviderClientSecretEnc)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt provider secret: %w", err)
 	}
 
-	return providerCfg, true
+	return &resolvedProviderCreds{
+		ClientID:     cp.ProviderClientID,
+		ClientSecret: secret,
+		RedirectURL:  cp.RedirectURL,
+	}, nil
 }
 
 func redirectURIApproved(approved []string, candidate string) bool {
@@ -168,15 +192,4 @@ func (h *Service) newLoginAttempt(providerName string, input *LoginInput) (repos
 		ProductState:        input.State,
 		ExpiresAt:           time.Now().Add(ttl),
 	}, nil
-}
-
-// providerCallbackURL returns the exact redirect URI to present to provider
-// and to replay during code exchange: the configured override, or one
-// derived from the public issuer so it stays in sync with the route in
-// internal/transport/restful-api.go.
-func providerCallbackURL(provider string, providerCfg config.ProviderConfig, issuer string) string {
-	if providerCfg.RedirectURL != "" {
-		return providerCfg.RedirectURL
-	}
-	return fmt.Sprintf("%s/api/auth/v1/callback/%s", strings.TrimRight(issuer, "/"), provider)
 }
