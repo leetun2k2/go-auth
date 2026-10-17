@@ -47,57 +47,29 @@ func (h *Service) requireAdminJWT(authHeader string) error {
 	return nil
 }
 
-// UpsertClientInput creates or replaces a first-party client.
+// UpsertClientInput creates or replaces one OAuth app registration, for
+// PUT /api/admin/v1/clients/:provider/:client_id. ClientSecret is the
+// provider's OAuth app secret (encrypted at rest); AuthSecret authenticates
+// the website's own backend calling this service and is hashed at rest.
+// Enabled is nil when omitted from the request body, which defaults to
+// true; an explicit false disables the registration.
 type UpsertClientInput struct {
 	AuthorizationHeader string
+	Provider            string
 	ClientID            string
 	Name                string
 	ClientSecret        string
+	AuthSecret          string
+	RedirectURL         string
 	RedirectURIs        []string
+	Enabled             *bool
 }
 
-// UpsertClient hashes the plaintext client secret and persists the client.
-// Calling it again for an existing ClientID replaces name, secret, and
-// redirect_uris.
+// UpsertClient encrypts the provider secret, hashes the backend auth
+// secret, and persists the (provider, client_id) registration. Calling it
+// again for the same (provider, client_id) replaces every field and
+// preserves the row's UUID.
 func (h *Service) UpsertClient(ctx context.Context, input *UpsertClientInput) error {
-	if err := h.requireAdminJWT(input.AuthorizationHeader); err != nil {
-		return err
-	}
-
-	if strings.TrimSpace(input.ClientID) == "" ||
-		strings.TrimSpace(input.Name) == "" ||
-		strings.TrimSpace(input.ClientSecret) == "" ||
-		len(input.RedirectURIs) == 0 {
-		return ErrInvalidAdminRequest
-	}
-
-	secretHash, err := credential.HashSecret(input.ClientSecret)
-	if err != nil {
-		return fmt.Errorf("hash client secret: %w", err)
-	}
-
-	if err := h.repo.UpsertClient(ctx, input.ClientID, input.Name, input.RedirectURIs, secretHash); err != nil {
-		return fmt.Errorf("upsert client: %w", err)
-	}
-
-	return nil
-}
-
-// UpsertClientProviderInput creates or replaces one client's OAuth app
-// credentials for one provider.
-type UpsertClientProviderInput struct {
-	AuthorizationHeader  string
-	ClientID             string
-	Provider             string
-	ProviderClientID     string
-	ProviderClientSecret string
-	RedirectURL          string
-	Enabled              bool
-}
-
-// UpsertClientProvider encrypts the plaintext provider client secret and
-// persists the (client_id, provider) credentials row.
-func (h *Service) UpsertClientProvider(ctx context.Context, input *UpsertClientProviderInput) error {
 	if err := h.requireAdminJWT(input.AuthorizationHeader); err != nil {
 		return err
 	}
@@ -107,35 +79,41 @@ func (h *Service) UpsertClientProvider(ctx context.Context, input *UpsertClientP
 		return ErrUnsupportedProvider
 	}
 	if strings.TrimSpace(input.ClientID) == "" ||
-		strings.TrimSpace(input.ProviderClientID) == "" ||
-		strings.TrimSpace(input.ProviderClientSecret) == "" ||
-		strings.TrimSpace(input.RedirectURL) == "" {
+		strings.TrimSpace(input.Name) == "" ||
+		strings.TrimSpace(input.ClientSecret) == "" ||
+		strings.TrimSpace(input.AuthSecret) == "" ||
+		strings.TrimSpace(input.RedirectURL) == "" ||
+		len(input.RedirectURIs) == 0 {
 		return ErrInvalidAdminRequest
 	}
 
-	client, err := h.repo.GetClientByClientID(ctx, input.ClientID)
-	if err != nil {
-		return fmt.Errorf("lookup client: %w", err)
-	}
-	if client == nil {
-		return ErrUnknownClient
+	enabled := true
+	if input.Enabled != nil {
+		enabled = *input.Enabled
 	}
 
-	secretEnc, err := security.EncryptProviderSecret(h.cfg.Auth.ProviderSecretKey, input.ProviderClientSecret)
+	clientSecretEnc, err := security.EncryptProviderSecret(h.cfg.Auth.ProviderSecretKey, input.ClientSecret)
 	if err != nil {
 		return fmt.Errorf("encrypt provider secret: %w", err)
 	}
 
-	cp := repository.ClientProvider{
-		ClientID:                input.ClientID,
-		Provider:                providerName,
-		ProviderClientID:        input.ProviderClientID,
-		ProviderClientSecretEnc: secretEnc,
-		RedirectURL:             input.RedirectURL,
-		Enabled:                 input.Enabled,
+	authSecretHash, err := credential.HashSecret(input.AuthSecret)
+	if err != nil {
+		return fmt.Errorf("hash auth secret: %w", err)
 	}
-	if err := h.repo.UpsertClientProvider(ctx, cp); err != nil {
-		return fmt.Errorf("upsert client provider: %w", err)
+
+	c := repository.Client{
+		Provider:        providerName,
+		ClientID:        input.ClientID,
+		ClientSecretEnc: clientSecretEnc,
+		AuthSecretHash:  authSecretHash,
+		Name:            input.Name,
+		RedirectURL:     input.RedirectURL,
+		RedirectURIs:    input.RedirectURIs,
+		Enabled:         enabled,
+	}
+	if err := h.repo.UpsertClient(ctx, c); err != nil {
+		return fmt.Errorf("upsert client: %w", err)
 	}
 
 	return nil

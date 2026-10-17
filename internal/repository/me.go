@@ -22,8 +22,8 @@ var ErrSessionInvalid = errors.New("invalid session")
 // identity is owned by the claimed user, and returns the minimal shared
 // profile for GET /api/auth/v1/me (spec 06, 07). Any mismatch fails closed with
 // ErrSessionInvalid.
-func (r *Repository) GetActiveSessionAndUser(ctx context.Context, sessionID, userID, identityID uuid.UUID, clientID string) (*User, error) {
-	if err := checkActiveSessionBinding(ctx, r.db, sessionID, userID, identityID, clientID); err != nil {
+func (r *Repository) GetActiveSessionAndUser(ctx context.Context, sessionID, userID, identityID, clientRef uuid.UUID) (*User, error) {
+	if err := checkActiveSessionBinding(ctx, r.db, sessionID, userID, identityID, clientRef); err != nil {
 		return nil, err
 	}
 
@@ -42,21 +42,21 @@ func (r *Repository) GetActiveSessionAndUser(ctx context.Context, sessionID, use
 	return user, nil
 }
 
-func checkActiveSessionBinding(ctx context.Context, db *pgxpool.Pool, sessionID, userID, identityID uuid.UUID, clientID string) error {
+func checkActiveSessionBinding(ctx context.Context, db *pgxpool.Pool, sessionID, userID, identityID, clientRef uuid.UUID) error {
 	const query = `
-SELECT user_id, identity_id, client_id, revoked_at, expires_at
+SELECT user_id, identity_id, client_ref, revoked_at, expires_at
 FROM sessions
 WHERE id = $1`
 
 	var (
 		sessUserID     uuid.UUID
 		sessIdentityID uuid.UUID
-		sessClientID   string
+		sessClientRef  uuid.UUID
 		revokedAt      *time.Time
 		expiresAt      time.Time
 	)
 
-	err := db.QueryRow(ctx, query, sessionID).Scan(&sessUserID, &sessIdentityID, &sessClientID, &revokedAt, &expiresAt)
+	err := db.QueryRow(ctx, query, sessionID).Scan(&sessUserID, &sessIdentityID, &sessClientRef, &revokedAt, &expiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrSessionInvalid
@@ -67,7 +67,7 @@ WHERE id = $1`
 	if revokedAt != nil || !time.Now().Before(expiresAt) {
 		return ErrSessionInvalid
 	}
-	if sessUserID != userID || sessIdentityID != identityID || sessClientID != clientID {
+	if sessUserID != userID || sessIdentityID != identityID || sessClientRef != clientRef {
 		return ErrSessionInvalid
 	}
 

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/leetun2k2/go-auth/internal/repository"
 	"github.com/leetun2k2/go-auth/pkg/observability"
 	"github.com/leetun2k2/go-bedrock/authx/credential"
@@ -27,9 +29,13 @@ var (
 )
 
 // ExchangeInput is the validated set of client credentials and payload
-// fields for POST /api/auth/v1/exchange.
+// fields for POST /api/auth/v1/exchange. Provider comes from the
+// X-Client-Provider header: ClientCredentials.ClientID is the
+// provider-issued ID, and ClientCredentials.ClientSecret is the backend
+// auth_secret, not the provider's OAuth app secret.
 type ExchangeInput struct {
 	ClientCredentials credential.Credentials
+	Provider          string
 	Code              string
 	CodeVerifier      string
 	RedirectURI       string
@@ -58,7 +64,7 @@ type ExchangeOutput struct {
 // ES256 session JWT (spec 06, 08). Client authentication always runs before
 // any code lookup or mutation.
 func (h *Service) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeOutput, error) {
-	client, err := h.authenticateClient(ctx, input.ClientCredentials)
+	client, err := h.authenticateClient(ctx, input.Provider, input.ClientCredentials)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientCredentials.ClientID, "", observability.StageExchange, observability.StatusDenied)
 		return ExchangeOutput{}, err
@@ -76,7 +82,7 @@ func (h *Service) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeO
 		sessionTTL = h.cfg.Auth.SessionTTL
 	}
 
-	result, err := h.repo.ExchangeAuthCode(ctx, input.Code, input.CodeVerifier, input.RedirectURI, client.ClientID, sessionTTL)
+	result, err := h.repo.ExchangeAuthCode(ctx, input.Code, input.CodeVerifier, input.RedirectURI, client.ID, sessionTTL)
 	if err != nil {
 		if errors.Is(err, repository.ErrAuthCodeInvalid) {
 			h.logAuthEvent(ctx, client.ClientID, "", observability.StageExchange, observability.StatusDenied)
@@ -86,7 +92,7 @@ func (h *Service) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeO
 		return ExchangeOutput{}, fmt.Errorf("exchange auth code: %w", err)
 	}
 
-	token, err := h.signSessionJWT(client.ClientID, result)
+	token, err := h.signSessionJWT(client.ID, result)
 	if err != nil {
 		h.logAuthEvent(ctx, client.ClientID, "", observability.StageExchange, observability.StatusFailure)
 		return ExchangeOutput{}, err
@@ -106,16 +112,21 @@ func (h *Service) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeO
 	}, nil
 }
 
-// authenticateClient verifies the product client's credentials against the
-// stored Argon2id secret hash and collapses every failure mode into
+// authenticateClient verifies the calling backend's credentials -- a
+// registration's provider-issued client_id and its backend auth_secret --
+// against the stored Argon2id hash, and collapses every failure mode into
 // ErrInvalidClient so no caller can distinguish missing, malformed, or
 // wrong-secret credentials.
-func (h *Service) authenticateClient(ctx context.Context, creds credential.Credentials) (*repository.Client, error) {
+func (h *Service) authenticateClient(ctx context.Context, providerName string, creds credential.Credentials) (*repository.Client, error) {
+	providerName = strings.ToLower(strings.TrimSpace(providerName))
+	if providerName != "google" && providerName != "github" {
+		return nil, ErrInvalidClient
+	}
 	if strings.TrimSpace(creds.ClientID) == "" || strings.TrimSpace(creds.ClientSecret) == "" {
 		return nil, ErrInvalidClient
 	}
 
-	client, err := h.repo.GetClientByClientID(ctx, creds.ClientID)
+	client, err := h.repo.GetClientByProviderAndClientID(ctx, providerName, creds.ClientID)
 	if err != nil {
 		return nil, fmt.Errorf("lookup client: %w", err)
 	}
@@ -123,16 +134,16 @@ func (h *Service) authenticateClient(ctx context.Context, creds credential.Crede
 		return nil, ErrInvalidClient
 	}
 
-	if err := credential.VerifyClientSecret(creds.ClientSecret, client.ClientSecretHash); err != nil {
+	if err := credential.VerifyClientSecret(creds.ClientSecret, client.AuthSecretHash); err != nil {
 		return nil, ErrInvalidClient
 	}
 
 	return client, nil
 }
 
-func (h *Service) signSessionJWT(clientID string, result *repository.ExchangeResult) (string, error) {
+func (h *Service) signSessionJWT(clientRef uuid.UUID, result *repository.ExchangeResult) (string, error) {
 	claims := token.Claims{
-		Audience:  clientID,
+		Audience:  clientRef.String(),
 		Subject:   result.UserID.String(),
 		IssuedAt:  time.Now().Unix(),
 		ExpiresAt: result.ExpiresAt.Unix(),

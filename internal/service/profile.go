@@ -21,6 +21,7 @@ var ErrInvalidProfileRequest = errors.New("invalid profile request")
 // ClientCredentials is required.
 type UpdateProfileInput struct {
 	ClientCredentials   credential.Credentials
+	Provider            string
 	AuthorizationHeader string
 	DisplayName         *string
 	AvatarURL           *string
@@ -37,7 +38,7 @@ type UpdateProfileOutput struct {
 // UpdateProfile validates the session and mutable profile fields, persists the changes,
 // marks each updated field as user-managed, and returns the updated profile.
 func (h *Service) UpdateProfile(ctx context.Context, input *UpdateProfileInput) (UpdateProfileOutput, error) {
-	session, err := h.authenticateSession(ctx, input.ClientCredentials, input.AuthorizationHeader)
+	session, err := h.authenticateSession(ctx, input.Provider, input.ClientCredentials, input.AuthorizationHeader)
 	if err != nil {
 		return UpdateProfileOutput{}, err
 	}

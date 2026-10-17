@@ -116,11 +116,11 @@ func insertAuthCode(ctx context.Context, tx pgx.Tx, attempt LoginAttempt, userID
 
 	const query = `
 INSERT INTO auth_codes (
-	id, code, client_id, user_id, identity_id, redirect_uri,
+	id, code, client_ref, user_id, identity_id, redirect_uri,
 	code_challenge, code_challenge_method, expires_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
-	_, err = tx.Exec(ctx, query, id, code, attempt.ClientID, userID, identityID,
+	_, err = tx.Exec(ctx, query, id, code, attempt.ClientRef, userID, identityID,
 		attempt.RedirectURI, attempt.CodeChallenge, attempt.CodeChallengeMethod, expiresAt)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("insert auth code: %w", err)

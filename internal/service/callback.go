@@ -72,7 +72,7 @@ func (h *Service) Callback(ctx context.Context, input *CallbackInput) (CallbackO
 		return CallbackOutput{}, ErrInvalidCallbackRequest
 	}
 	if attempt.ConsumedAt != nil {
-		h.logAuthEvent(ctx, attempt.ClientID, providerName, observability.StageCallback, observability.StatusDenied)
+		h.logAuthEvent(ctx, attempt.ClientRef.String(), providerName, observability.StageCallback, observability.StatusDenied)
 		return CallbackOutput{}, ErrInvalidCallbackRequest
 	}
 
@@ -83,12 +83,17 @@ func (h *Service) Callback(ctx context.Context, input *CallbackInput) (CallbackO
 		return h.failCallback(ctx, attempt, callbackErrorAccessDenied, observability.StatusDenied), nil
 	}
 
-	providerCreds, err := h.resolveProvider(ctx, attempt.ClientID, providerName)
+	client, err := h.repo.GetClientByID(ctx, attempt.ClientRef)
 	if err != nil {
 		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusFailure), nil
 	}
-	if providerCreds == nil {
+	if client == nil {
 		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusDenied), nil
+	}
+
+	providerCreds, err := h.resolveProvider(client)
+	if err != nil {
+		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusFailure), nil
 	}
 
 	p, err := providerClientFor(providerName, providerCreds)
@@ -113,14 +118,14 @@ func (h *Service) Callback(ctx context.Context, input *CallbackInput) (CallbackO
 	code, _, err := h.repo.CompleteProviderCallback(ctx, *attempt, identity, codeTTL)
 	if err != nil {
 		if errors.Is(err, repository.ErrLoginAttemptAlreadyConsumed) {
-			h.logAuthEvent(ctx, attempt.ClientID, providerName, observability.StageCallback, observability.StatusDenied)
+			h.logAuthEvent(ctx, attempt.ClientRef.String(), providerName, observability.StageCallback, observability.StatusDenied)
 			return CallbackOutput{}, ErrInvalidCallbackRequest
 		}
 		h.logger.Error(ctx, "complete provider callback failed", "error", err)
 		return h.failCallback(ctx, attempt, callbackErrorTemporarilyUnavailable, observability.StatusFailure), nil
 	}
 
-	h.logAuthEvent(ctx, attempt.ClientID, providerName, observability.StageCallback, observability.StatusSuccess)
+	h.logAuthEvent(ctx, attempt.ClientRef.String(), providerName, observability.StageCallback, observability.StatusSuccess)
 	return CallbackOutput{RedirectURL: callbackRedirectURL(attempt.RedirectURI, attempt.ProductState, code, "")}, nil
 }
 
@@ -129,7 +134,7 @@ func (h *Service) Callback(ctx context.Context, input *CallbackInput) (CallbackO
 // consume is logged and the browser is still redirected, since leaving the
 // attempt live is strictly safer than leaking a 500 to the browser.
 func (h *Service) failCallback(ctx context.Context, attempt *repository.LoginAttempt, errorCategory, status string) CallbackOutput {
-	h.logAuthEvent(ctx, attempt.ClientID, attempt.Provider, observability.StageCallback, status)
+	h.logAuthEvent(ctx, attempt.ClientRef.String(), attempt.Provider, observability.StageCallback, status)
 	if err := h.repo.ConsumeLoginAttempt(ctx, attempt.ID); err != nil {
 		h.logger.Error(ctx, "consume login attempt on callback failure", "error", err)
 	}

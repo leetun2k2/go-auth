@@ -14,6 +14,7 @@ import (
 // POST /api/auth/v1/logout.
 type LogoutInput struct {
 	ClientCredentials   credential.Credentials
+	Provider            string
 	AuthorizationHeader string
 }
 
@@ -24,7 +25,7 @@ type LogoutInput struct {
 // idempotent and returns nil so the caller always responds 204; only a
 // revocation failure after client authentication returns an error.
 func (h *Service) Logout(ctx context.Context, input *LogoutInput) error {
-	client, err := h.authenticateClient(ctx, input.ClientCredentials)
+	client, err := h.authenticateClient(ctx, input.Provider, input.ClientCredentials)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientCredentials.ClientID, "", observability.StageLogout, observability.StatusDenied)
 		return err
@@ -36,7 +37,7 @@ func (h *Service) Logout(ctx context.Context, input *LogoutInput) error {
 		return nil
 	}
 
-	claims, err := h.tokenManager.Verify(token, client.ClientID)
+	claims, err := h.tokenManager.Verify(token, client.ID.String())
 	if err != nil {
 		h.logAuthEvent(ctx, client.ClientID, "", observability.StageLogout, observability.StatusSuccess)
 		return nil
@@ -48,7 +49,7 @@ func (h *Service) Logout(ctx context.Context, input *LogoutInput) error {
 		return nil
 	}
 
-	if err := h.repo.RevokeSession(ctx, sessionID, client.ClientID); err != nil {
+	if err := h.repo.RevokeSession(ctx, sessionID, client.ID); err != nil {
 		h.logAuthEvent(ctx, client.ClientID, "", observability.StageLogout, observability.StatusFailure)
 		return fmt.Errorf("revoke session: %w", err)
 	}

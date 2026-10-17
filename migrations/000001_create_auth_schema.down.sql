@@ -1,4 +1,3 @@
-DROP TABLE IF EXISTS client_providers;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS auth_codes;
 DROP TABLE IF EXISTS login_attempts;

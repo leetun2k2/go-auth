@@ -33,7 +33,7 @@ type ExchangeResult struct {
 
 type authCodeRow struct {
 	ID                  uuid.UUID
-	ClientID            string
+	ClientRef           uuid.UUID
 	UserID              uuid.UUID
 	IdentityID          uuid.UUID
 	RedirectURI         string
@@ -44,10 +44,10 @@ type authCodeRow struct {
 }
 
 // ExchangeAuthCode atomically consumes a one-time authorization code and
-// creates its active PostgreSQL session (spec 06, 08). authenticatedClientID
+// creates its active PostgreSQL session (spec 06, 08). authenticatedClientRef
 // must already be verified by the caller: this never consumes a code or
 // creates a session for a client that failed authentication.
-func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, redirectURI, authenticatedClientID string, sessionTTL time.Duration) (*ExchangeResult, error) {
+func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, redirectURI string, authenticatedClientRef uuid.UUID, sessionTTL time.Duration) (*ExchangeResult, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin exchange tx: %w", err)
@@ -64,7 +64,7 @@ func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, r
 	if ac.ConsumedAt != nil || !time.Now().Before(ac.ExpiresAt) {
 		return nil, ErrAuthCodeInvalid
 	}
-	if ac.ClientID != authenticatedClientID || ac.RedirectURI != redirectURI {
+	if ac.ClientRef != authenticatedClientRef || ac.RedirectURI != redirectURI {
 		return nil, ErrAuthCodeInvalid
 	}
 	if !oauth.VerifyCodeChallenge(codeVerifier, ac.CodeChallenge, ac.CodeChallengeMethod) {
@@ -79,7 +79,7 @@ func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, r
 		return nil, ErrAuthCodeInvalid
 	}
 
-	sessionID, expiresAt, err := insertSession(ctx, tx, ac.UserID, ac.IdentityID, authenticatedClientID, sessionTTL)
+	sessionID, expiresAt, err := insertSession(ctx, tx, ac.UserID, ac.IdentityID, authenticatedClientRef, sessionTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -109,14 +109,14 @@ func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, r
 
 func findAuthCodeByCode(ctx context.Context, tx pgx.Tx, code string) (*authCodeRow, error) {
 	const query = `
-SELECT id, client_id, user_id, identity_id, redirect_uri, code_challenge, code_challenge_method, expires_at, consumed_at
+SELECT id, client_ref, user_id, identity_id, redirect_uri, code_challenge, code_challenge_method, expires_at, consumed_at
 FROM auth_codes
 WHERE code = $1
 FOR UPDATE`
 
 	var ac authCodeRow
 	err := tx.QueryRow(ctx, query, code).Scan(
-		&ac.ID, &ac.ClientID, &ac.UserID, &ac.IdentityID, &ac.RedirectURI,
+		&ac.ID, &ac.ClientRef, &ac.UserID, &ac.IdentityID, &ac.RedirectURI,
 		&ac.CodeChallenge, &ac.CodeChallengeMethod, &ac.ExpiresAt, &ac.ConsumedAt,
 	)
 	if err != nil {
@@ -143,7 +143,7 @@ func consumeAuthCodeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, erro
 	return tag.RowsAffected() == 1, nil
 }
 
-func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID uuid.UUID, clientID string, sessionTTL time.Duration) (uuid.UUID, time.Time, error) {
+func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID, clientRef uuid.UUID, sessionTTL time.Duration) (uuid.UUID, time.Time, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return uuid.Nil, time.Time{}, fmt.Errorf("generate session id: %w", err)
@@ -151,10 +151,10 @@ func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID uuid.UUID,
 	expiresAt := time.Now().Add(sessionTTL)
 
 	const query = `
-INSERT INTO sessions (id, user_id, identity_id, client_id, expires_at)
+INSERT INTO sessions (id, user_id, identity_id, client_ref, expires_at)
 VALUES ($1, $2, $3, $4, $5)`
 
-	if _, err := tx.Exec(ctx, query, id, userID, identityID, clientID, expiresAt); err != nil {
+	if _, err := tx.Exec(ctx, query, id, userID, identityID, clientRef, expiresAt); err != nil {
 		return uuid.Nil, time.Time{}, fmt.Errorf("insert session: %w", err)
 	}
 

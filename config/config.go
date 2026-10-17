@@ -46,10 +46,10 @@ type SigningKeyConfig struct {
 
 // AuthConfig holds Shared Auth specific runtime configuration: the public
 // issuer identity, environment-specific TTLs, the key used to encrypt
-// per-client provider secrets stored in the database, and the JWT signing
-// key. Per-client OAuth provider credentials (Google/GitHub client
-// id/secret/redirect_url) live in the client_providers table, not
-// here, since each first-party client has its own OAuth app registration.
+// provider secrets stored in the database, and the JWT signing key. Each
+// OAuth app registration's own credentials (provider, client_id,
+// client_secret, redirect_url) live in the clients table, not here, since
+// each registration has its own OAuth app at the provider.
 //
 // Environment variable overrides:
 //

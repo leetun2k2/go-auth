@@ -11,7 +11,7 @@ import (
 )
 
 // EncryptProviderSecret encrypts a provider client_secret for storage in
-// client_providers.provider_client_secret_enc, using AES-256-GCM with
+// clients.client_secret_enc, using AES-256-GCM with
 // cfg.Auth.ProviderSecretKey (base64-encoded 32-byte key).
 func EncryptProviderSecret(base64Key, plaintext string) (string, error) {
 	gcm, err := newProviderSecretGCM(base64Key)

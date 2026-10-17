@@ -66,7 +66,7 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 		return LoginOutput{}, ErrInvalidLoginRequest
 	}
 
-	client, err := h.repo.GetClientByClientID(ctx, input.ClientID)
+	client, err := h.repo.GetClientByProviderAndClientID(ctx, providerName, input.ClientID)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
 		return LoginOutput{}, fmt.Errorf("lookup client: %w", err)
@@ -80,17 +80,13 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 		return LoginOutput{}, ErrInvalidRedirectURI
 	}
 
-	providerCreds, err := h.resolveProvider(ctx, input.ClientID, providerName)
+	providerCreds, err := h.resolveProvider(client)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
 		return LoginOutput{}, err
 	}
-	if providerCreds == nil {
-		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusDenied)
-		return LoginOutput{}, ErrUnsupportedProvider
-	}
 
-	attempt, err := h.newLoginAttempt(providerName, input)
+	attempt, err := h.newLoginAttempt(client.ID, providerName, input)
 	if err != nil {
 		h.logAuthEvent(ctx, input.ClientID, providerName, observability.StageOAuthStart, observability.StatusFailure)
 		return LoginOutput{}, err
@@ -120,35 +116,25 @@ func (h *Service) Login(ctx context.Context, input *LoginInput) (LoginOutput, er
 	return LoginOutput{RedirectURL: redirectURL}, nil
 }
 
-// resolvedProviderCreds is a client's decrypted OAuth app credentials for
-// one provider, ready to build a provider.Provider and its authorization
-// request.
+// resolvedProviderCreds is a registration's decrypted OAuth app credentials,
+// ready to build a provider.Provider and its authorization request.
 type resolvedProviderCreds struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
 }
 
-// resolveProvider loads and decrypts a client's provider credentials. It
-// returns nil, nil when the client has no enabled row for this provider.
-func (h *Service) resolveProvider(ctx context.Context, clientID, providerName string) (*resolvedProviderCreds, error) {
-	cp, err := h.repo.GetClientProvider(ctx, clientID, providerName)
-	if err != nil {
-		return nil, fmt.Errorf("lookup client provider: %w", err)
-	}
-	if cp == nil {
-		return nil, nil
-	}
-
-	secret, err := security.DecryptProviderSecret(h.cfg.Auth.ProviderSecretKey, cp.ProviderClientSecretEnc)
+// resolveProvider decrypts a registration's provider OAuth app secret.
+func (h *Service) resolveProvider(client *repository.Client) (*resolvedProviderCreds, error) {
+	secret, err := security.DecryptProviderSecret(h.cfg.Auth.ProviderSecretKey, client.ClientSecretEnc)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt provider secret: %w", err)
 	}
 
 	return &resolvedProviderCreds{
-		ClientID:     cp.ProviderClientID,
+		ClientID:     client.ClientID,
 		ClientSecret: secret,
-		RedirectURL:  cp.RedirectURL,
+		RedirectURL:  client.RedirectURL,
 	}, nil
 }
 
@@ -161,7 +147,7 @@ func redirectURIApproved(approved []string, candidate string) bool {
 	return false
 }
 
-func (h *Service) newLoginAttempt(providerName string, input *LoginInput) (repository.LoginAttempt, error) {
+func (h *Service) newLoginAttempt(clientRef uuid.UUID, providerName string, input *LoginInput) (repository.LoginAttempt, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return repository.LoginAttempt{}, fmt.Errorf("generate login attempt id: %w", err)
@@ -182,7 +168,7 @@ func (h *Service) newLoginAttempt(providerName string, input *LoginInput) (repos
 
 	return repository.LoginAttempt{
 		ID:                  id,
-		ClientID:            input.ClientID,
+		ClientRef:           clientRef,
 		Provider:            providerName,
 		State:               state,
 		Nonce:               nonce,

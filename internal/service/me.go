@@ -27,6 +27,7 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // calling, not trusted from the token's own unverified claim).
 type MeInput struct {
 	ClientCredentials   credential.Credentials
+	Provider            string
 	AuthorizationHeader string
 }
 
@@ -47,14 +48,15 @@ type authenticatedSession struct {
 	IdentityID string
 }
 
-// authenticateSession authenticates the calling backend via clientCreds,
-// then verifies the session JWT is addressed to that same client (aud ==
-// client_id) before trusting its claims. The token's own unverified aud is
-// never used as the expected audience: a caller presenting a token issued
-// for a different client must be rejected, not merely have its
-// self-reported audience echoed back as "expected" (RFC 8725 section 2.8).
-func (h *Service) authenticateSession(ctx context.Context, clientCreds credential.Credentials, authHeader string) (*authenticatedSession, error) {
-	client, err := h.authenticateClient(ctx, clientCreds)
+// authenticateSession authenticates the calling backend via provider and
+// clientCreds, then verifies the session JWT is addressed to that same
+// registration (aud == the registration's row UUID) before trusting its
+// claims. The token's own unverified aud is never used as the expected
+// audience: a caller presenting a token issued for a different registration
+// must be rejected, not merely have its self-reported audience echoed back
+// as "expected" (RFC 8725 section 2.8).
+func (h *Service) authenticateSession(ctx context.Context, provider string, clientCreds credential.Credentials, authHeader string) (*authenticatedSession, error) {
+	client, err := h.authenticateClient(ctx, provider, clientCreds)
 	if err != nil {
 		if errors.Is(err, ErrInvalidClient) {
 			h.logAuthEvent(ctx, clientCreds.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
@@ -70,7 +72,7 @@ func (h *Service) authenticateSession(ctx context.Context, clientCreds credentia
 		return nil, ErrUnauthenticated
 	}
 
-	claims, err := h.tokenManager.Verify(token, client.ClientID)
+	claims, err := h.tokenManager.Verify(token, client.ID.String())
 	if err != nil {
 		h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
 		return nil, ErrUnauthenticated
@@ -85,7 +87,7 @@ func (h *Service) authenticateSession(ctx context.Context, clientCreds credentia
 		return nil, ErrUnauthenticated
 	}
 
-	user, err := h.repo.GetActiveSessionAndUser(ctx, sessionID, userID, identityID, client.ClientID)
+	user, err := h.repo.GetActiveSessionAndUser(ctx, sessionID, userID, identityID, client.ID)
 	if err != nil {
 		if errors.Is(err, repository.ErrSessionInvalid) {
 			h.logAuthEvent(ctx, client.ClientID, "", observability.StageSessionValidate, observability.StatusDenied)
@@ -109,7 +111,7 @@ func (h *Service) authenticateSession(ctx context.Context, clientCreds credentia
 // claimed user, identity, and client, and an identity owned by that user,
 // before returning the minimal shared profile.
 func (h *Service) Me(ctx context.Context, input *MeInput) (MeOutput, error) {
-	session, err := h.authenticateSession(ctx, input.ClientCredentials, input.AuthorizationHeader)
+	session, err := h.authenticateSession(ctx, input.Provider, input.ClientCredentials, input.AuthorizationHeader)
 	if err != nil {
 		return MeOutput{}, err
 	}

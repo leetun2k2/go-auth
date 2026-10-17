@@ -42,8 +42,7 @@ func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 
 	admin := engine.Group("/api/admin/v1")
 	{
-		admin.PUT("/clients/:client_id", app.upsertClient)
-		admin.PUT("/clients/:client_id/providers/:provider", app.upsertClientProvider)
+		admin.PUT("/clients/:provider/:client_id", app.upsertClient)
 	}
 	return nil
 }
@@ -145,6 +144,7 @@ func (app *Application) exchange(c *gin.Context) {
 
 	input := handler.ExchangeInput{
 		ClientCredentials: creds,
+		Provider:          c.GetHeader("X-Client-Provider"),
 		Code:              req.Code,
 		CodeVerifier:      req.CodeVerifier,
 		RedirectURI:       req.RedirectURI,
@@ -187,7 +187,11 @@ func (app *Application) me(c *gin.Context) {
 		return
 	}
 
-	input := handler.MeInput{ClientCredentials: creds, AuthorizationHeader: c.GetHeader("Authorization")}
+	input := handler.MeInput{
+		ClientCredentials:   creds,
+		Provider:            c.GetHeader("X-Client-Provider"),
+		AuthorizationHeader: c.GetHeader("Authorization"),
+	}
 
 	output, err := app.Handler.Me(ctx, &input)
 	if err != nil {
@@ -232,6 +236,7 @@ func (app *Application) updateProfile(c *gin.Context) {
 
 	input := handler.UpdateProfileInput{
 		ClientCredentials:   creds,
+		Provider:            c.GetHeader("X-Client-Provider"),
 		AuthorizationHeader: c.GetHeader("Authorization"),
 		DisplayName:         req.DisplayName,
 		AvatarURL:           req.AvatarURL,
@@ -271,6 +276,7 @@ func (app *Application) logout(c *gin.Context) {
 
 	input := handler.LogoutInput{
 		ClientCredentials:   creds,
+		Provider:            c.GetHeader("X-Client-Provider"),
 		AuthorizationHeader: c.GetHeader("Authorization"),
 	}
 
@@ -290,7 +296,10 @@ func (app *Application) logout(c *gin.Context) {
 type upsertClientRequest struct {
 	Name         string   `json:"name"`
 	ClientSecret string   `json:"client_secret"`
+	AuthSecret   string   `json:"auth_secret"`
+	RedirectURL  string   `json:"redirect_url"`
 	RedirectURIs []string `json:"redirect_uris"`
+	Enabled      *bool    `json:"enabled"`
 }
 
 func (app *Application) upsertClient(c *gin.Context) {
@@ -304,62 +313,24 @@ func (app *Application) upsertClient(c *gin.Context) {
 
 	input := handler.UpsertClientInput{
 		AuthorizationHeader: c.GetHeader("Authorization"),
+		Provider:            c.Param("provider"),
 		ClientID:            c.Param("client_id"),
 		Name:                req.Name,
 		ClientSecret:        req.ClientSecret,
+		AuthSecret:          req.AuthSecret,
+		RedirectURL:         req.RedirectURL,
 		RedirectURIs:        req.RedirectURIs,
+		Enabled:             req.Enabled,
 	}
 
 	if err := app.Handler.UpsertClient(ctx, &input); err != nil {
 		switch {
 		case errors.Is(err, handler.ErrUnauthenticated):
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		case errors.Is(err, handler.ErrInvalidAdminRequest):
+		case errors.Is(err, handler.ErrUnsupportedProvider), errors.Is(err, handler.ErrInvalidAdminRequest):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		default:
 			app.Logger.Error(ctx, "upsert client failed", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "temporarily_unavailable"})
-		}
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
-type upsertClientProviderRequest struct {
-	ProviderClientID     string `json:"provider_client_id"`
-	ProviderClientSecret string `json:"provider_client_secret"`
-	RedirectURL          string `json:"redirect_url"`
-	Enabled              bool   `json:"enabled"`
-}
-
-func (app *Application) upsertClientProvider(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	var req upsertClientProviderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
-		return
-	}
-
-	input := handler.UpsertClientProviderInput{
-		AuthorizationHeader:  c.GetHeader("Authorization"),
-		ClientID:             c.Param("client_id"),
-		Provider:             c.Param("provider"),
-		ProviderClientID:     req.ProviderClientID,
-		ProviderClientSecret: req.ProviderClientSecret,
-		RedirectURL:          req.RedirectURL,
-		Enabled:              req.Enabled,
-	}
-
-	if err := app.Handler.UpsertClientProvider(ctx, &input); err != nil {
-		switch {
-		case errors.Is(err, handler.ErrUnauthenticated):
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		case errors.Is(err, handler.ErrUnsupportedProvider), errors.Is(err, handler.ErrUnknownClient), errors.Is(err, handler.ErrInvalidAdminRequest):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
-		default:
-			app.Logger.Error(ctx, "upsert client provider failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "temporarily_unavailable"})
 		}
 		return

@@ -29,9 +29,9 @@ redis:
     password: ""
 
 # Shared Auth runtime configuration.
-# Per-client OAuth provider credentials (Google/GitHub) live in the
-# client_providers table, not here -- each first-party client has its own
-# OAuth app registration.
+# Per-registration OAuth provider credentials (Google/GitHub) live in the
+# clients table, not here -- each row is one provider OAuth app
+# registration, identified by its own provider-issued client_id.
 # Environment overrides: AUTH__ISSUER, AUTH__SESSION_TTL, AUTH__CODE_TTL,
 # AUTH__LOGIN_ATTEMPT_TTL, AUTH__PROVIDER_SECRET_KEY,
 # AUTH__SIGNING_KEY__KEY_ID, AUTH__SIGNING_KEY__PRIVATE_KEY_PEM (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH).
