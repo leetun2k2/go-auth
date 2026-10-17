@@ -23,19 +23,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /out/go-auth \
     ./cmd/server
 
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
-    -trimpath \
-    -ldflags="-s -w" \
-    -o /out/seed-client \
-    ./cmd/seed-client
-
 FROM scratch
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/go-auth /go-auth
-COPY --from=build /out/seed-client /seed-client
 
 USER 65532:65532
 
