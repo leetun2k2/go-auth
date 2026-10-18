@@ -54,7 +54,9 @@ type SigningKeyConfig struct {
 // Environment variable overrides:
 //
 //	AUTH__ISSUER=https://auth.example.com
-//	AUTH__SESSION_TTL=720h
+//	AUTH__SESSION_TTL=720h (refresh-token/session lifetime; deprecated alias, see RefreshTokenTTL)
+//	AUTH__ACCESS_TOKEN_TTL=15m
+//	AUTH__REFRESH_TOKEN_TTL=720h
 //	AUTH__CODE_TTL=2m
 //	AUTH__LOGIN_ATTEMPT_TTL=10m
 //	AUTH__PROVIDER_SECRET_KEY=... (base64-encoded 32-byte AES-256-GCM key)
@@ -63,6 +65,8 @@ type SigningKeyConfig struct {
 type AuthConfig struct {
 	Issuer            string           `json:"issuer" mapstructure:"issuer" yaml:"issuer"`
 	SessionTTL        time.Duration    `json:"sessionTtl" mapstructure:"session_ttl" yaml:"session_ttl"`
+	AccessTokenTTL    time.Duration    `json:"accessTokenTtl" mapstructure:"access_token_ttl" yaml:"access_token_ttl"`
+	RefreshTokenTTL   time.Duration    `json:"refreshTokenTtl" mapstructure:"refresh_token_ttl" yaml:"refresh_token_ttl"`
 	CodeTTL           time.Duration    `json:"codeTtl" mapstructure:"code_ttl" yaml:"code_ttl"`
 	LoginAttemptTTL   time.Duration    `json:"loginAttemptTtl" mapstructure:"login_attempt_ttl" yaml:"login_attempt_ttl"`
 	ProviderSecretKey string           `json:"providerSecretKey" mapstructure:"provider_secret_key" yaml:"provider_secret_key"`

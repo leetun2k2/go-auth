@@ -19,13 +19,14 @@ import (
 var ErrAuthCodeInvalid = errors.New("invalid authorization code")
 
 // ExchangeResult is the outcome of a successful code exchange: the new
-// session's identity and the minimal shared profile to return to the
-// client.
+// session's identity, its first refresh token, and the minimal shared
+// profile to return to the client.
 type ExchangeResult struct {
 	SessionID      uuid.UUID
 	UserID         uuid.UUID
 	IdentityID     uuid.UUID
 	ExpiresAt      time.Time
+	RefreshToken   string
 	CanonicalEmail string
 	DisplayName    string
 	AvatarURL      string
@@ -47,7 +48,7 @@ type authCodeRow struct {
 // creates its active PostgreSQL session (spec 06, 08). authenticatedClientRef
 // must already be verified by the caller: this never consumes a code or
 // creates a session for a client that failed authentication.
-func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, redirectURI string, authenticatedClientRef uuid.UUID, sessionTTL time.Duration) (*ExchangeResult, error) {
+func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, redirectURI string, authenticatedClientRef uuid.UUID, clientType string, sessionTTL time.Duration) (*ExchangeResult, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin exchange tx: %w", err)
@@ -79,7 +80,12 @@ func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, r
 		return nil, ErrAuthCodeInvalid
 	}
 
-	sessionID, expiresAt, err := insertSession(ctx, tx, ac.UserID, ac.IdentityID, authenticatedClientRef, sessionTTL)
+	sessionID, expiresAt, err := insertSession(ctx, tx, ac.UserID, ac.IdentityID, authenticatedClientRef, clientType, sessionTTL)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := insertFirstRefreshToken(ctx, tx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +107,7 @@ func (r *Repository) ExchangeAuthCode(ctx context.Context, code, codeVerifier, r
 		UserID:         ac.UserID,
 		IdentityID:     ac.IdentityID,
 		ExpiresAt:      expiresAt,
+		RefreshToken:   refreshToken,
 		CanonicalEmail: user.CanonicalEmail,
 		DisplayName:    user.DisplayName,
 		AvatarURL:      user.AvatarURL,
@@ -143,7 +150,7 @@ func consumeAuthCodeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, erro
 	return tag.RowsAffected() == 1, nil
 }
 
-func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID, clientRef uuid.UUID, sessionTTL time.Duration) (uuid.UUID, time.Time, error) {
+func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID, clientRef uuid.UUID, clientType string, sessionTTL time.Duration) (uuid.UUID, time.Time, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return uuid.Nil, time.Time{}, fmt.Errorf("generate session id: %w", err)
@@ -151,10 +158,10 @@ func insertSession(ctx context.Context, tx pgx.Tx, userID, identityID, clientRef
 	expiresAt := time.Now().Add(sessionTTL)
 
 	const query = `
-INSERT INTO sessions (id, user_id, identity_id, client_ref, expires_at)
-VALUES ($1, $2, $3, $4, $5)`
+INSERT INTO sessions (id, user_id, identity_id, client_ref, client_type, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)`
 
-	if _, err := tx.Exec(ctx, query, id, userID, identityID, clientRef, expiresAt); err != nil {
+	if _, err := tx.Exec(ctx, query, id, userID, identityID, clientRef, clientType, expiresAt); err != nil {
 		return uuid.Nil, time.Time{}, fmt.Errorf("insert session: %w", err)
 	}
 

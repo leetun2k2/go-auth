@@ -35,9 +35,11 @@ func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 		v1.GET("/login/:provider", app.login)
 		v1.GET("/callback/:provider", app.callback)
 		v1.POST("/exchange", app.exchange)
+		v1.POST("/refresh", app.refresh)
 		v1.GET("/me", app.me)
 		v1.PATCH("/profile", app.updateProfile)
 		v1.POST("/logout", app.logout)
+		v1.POST("/logout-all", app.logoutAll)
 	}
 
 	admin := engine.Group("/api/admin/v1")
@@ -169,15 +171,68 @@ func (app *Application) exchange(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token": output.AccessToken,
-		"token_type":   output.TokenType,
-		"expires_in":   output.ExpiresIn,
+		"access_token":       output.AccessToken,
+		"token_type":         output.TokenType,
+		"expires_in":         output.ExpiresIn,
+		"refresh_token":      output.RefreshToken,
+		"refresh_expires_in": output.RefreshExpiresIn,
 		"user": gin.H{
 			"id":           output.User.ID,
 			"email":        output.User.Email,
 			"display_name": output.User.DisplayName,
 			"avatar_url":   output.User.AvatarURL,
 		},
+	})
+}
+
+// refreshRequest is the JSON or form payload for POST /api/auth/v1/refresh.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token" form:"refresh_token"`
+}
+
+func (app *Application) refresh(c *gin.Context) {
+	ctx := c.Request.Context()
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+
+	creds, err := credential.Extract(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
+		return
+	}
+
+	var req refreshRequest
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+
+	input := handler.RefreshInput{
+		ClientCredentials: creds,
+		Provider:          c.GetHeader("X-Client-Provider"),
+		RefreshToken:      req.RefreshToken,
+	}
+
+	output, err := app.Handler.Refresh(ctx, &input)
+	if err != nil {
+		switch {
+		case errors.Is(err, handler.ErrInvalidClient):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
+		case errors.Is(err, handler.ErrInvalidGrant):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
+		default:
+			app.Logger.Error(ctx, "refresh failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "temporarily_unavailable"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":       output.AccessToken,
+		"token_type":         output.TokenType,
+		"expires_in":         output.ExpiresIn,
+		"refresh_token":      output.RefreshToken,
+		"refresh_expires_in": output.RefreshExpiresIn,
 	})
 }
 
@@ -297,7 +352,37 @@ func (app *Application) logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (app *Application) logoutAll(c *gin.Context) {
+	ctx := c.Request.Context()
+	c.Header("Cache-Control", "no-store")
+
+	creds, err := extractBearerClientCredentials(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	input := handler.LogoutAllInput{
+		ClientCredentials:   creds,
+		Provider:            c.GetHeader("X-Client-Provider"),
+		AuthorizationHeader: c.GetHeader("Authorization"),
+	}
+
+	if err := app.Handler.LogoutAll(ctx, &input); err != nil {
+		if errors.Is(err, handler.ErrUnauthenticated) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		app.Logger.Error(ctx, "logout-all failed", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporarily_unavailable"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 type upsertClientRequest struct {
+	ClientType   string   `json:"client_type"`
 	Name         string   `json:"name"`
 	ClientSecret string   `json:"client_secret"`
 	AuthSecret   string   `json:"auth_secret"`
@@ -318,6 +403,7 @@ func (app *Application) upsertClient(c *gin.Context) {
 	input := handler.UpsertClientInput{
 		Provider:     c.Param("provider"),
 		ClientID:     c.Param("client_id"),
+		ClientType:   req.ClientType,
 		Name:         req.Name,
 		ClientSecret: req.ClientSecret,
 		AuthSecret:   req.AuthSecret,

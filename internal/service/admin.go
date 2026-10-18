@@ -19,13 +19,18 @@ var ErrInvalidAdminRequest = errors.New("invalid admin request")
 
 // UpsertClientInput creates or replaces one OAuth app registration, for
 // PUT /api/admin/v1/clients/:provider/:client_id. ClientSecret is the
-// provider's OAuth app secret (encrypted at rest); AuthSecret authenticates
-// the website's own backend calling this service and is hashed at rest.
-// Enabled is nil when omitted from the request body, which defaults to
-// true; an explicit false disables the registration.
+// provider's OAuth app secret (encrypted at rest). ClientType is "web" or
+// "mobile" ("web" when empty, for backward compatibility); it is only
+// applied on first registration, since client_type is immutable afterward.
+// AuthSecret authenticates the registration's own backend calling this
+// service and is hashed at rest; it is required for "web" and must be
+// empty for "mobile", which authenticates via PKCE instead. Enabled is nil
+// when omitted from the request body, which defaults to true; an explicit
+// false disables the registration.
 type UpsertClientInput struct {
 	Provider     string
 	ClientID     string
+	ClientType   string
 	Name         string
 	ClientSecret string
 	AuthSecret   string
@@ -34,22 +39,47 @@ type UpsertClientInput struct {
 	Enabled      *bool
 }
 
-// UpsertClient encrypts the provider secret, hashes the backend auth
-// secret, and persists the (provider, client_id) registration. Calling it
-// again for the same (provider, client_id) replaces every field and
-// preserves the row's UUID.
+// UpsertClient encrypts the provider secret, hashes the backend auth secret
+// (web only), and persists the (provider, client_id) registration. Calling
+// it again for the same (provider, client_id) replaces every field except
+// client_type and preserves the row's UUID.
 func (h *Service) UpsertClient(ctx context.Context, input *UpsertClientInput) error {
 	providerName := strings.ToLower(strings.TrimSpace(input.Provider))
 	if providerName != "google" && providerName != "github" {
 		return ErrUnsupportedProvider
 	}
+
+	clientType := strings.ToLower(strings.TrimSpace(input.ClientType))
+	if clientType == "" {
+		clientType = repository.ClientTypeWeb
+	}
+	if clientType != repository.ClientTypeWeb && clientType != repository.ClientTypeMobile {
+		return ErrInvalidAdminRequest
+	}
+
 	if strings.TrimSpace(input.ClientID) == "" ||
 		strings.TrimSpace(input.Name) == "" ||
 		strings.TrimSpace(input.ClientSecret) == "" ||
-		strings.TrimSpace(input.AuthSecret) == "" ||
 		strings.TrimSpace(input.RedirectURL) == "" ||
 		len(input.RedirectURIs) == 0 {
 		return ErrInvalidAdminRequest
+	}
+
+	var authSecretHash *string
+	switch clientType {
+	case repository.ClientTypeWeb:
+		if strings.TrimSpace(input.AuthSecret) == "" {
+			return ErrInvalidAdminRequest
+		}
+		hash, err := credential.HashSecret(input.AuthSecret)
+		if err != nil {
+			return fmt.Errorf("hash auth secret: %w", err)
+		}
+		authSecretHash = &hash
+	case repository.ClientTypeMobile:
+		if strings.TrimSpace(input.AuthSecret) != "" {
+			return ErrInvalidAdminRequest
+		}
 	}
 
 	enabled := true
@@ -62,16 +92,12 @@ func (h *Service) UpsertClient(ctx context.Context, input *UpsertClientInput) er
 		return fmt.Errorf("encrypt provider secret: %w", err)
 	}
 
-	authSecretHash, err := credential.HashSecret(input.AuthSecret)
-	if err != nil {
-		return fmt.Errorf("hash auth secret: %w", err)
-	}
-
 	c := repository.Client{
 		Provider:        providerName,
 		ClientID:        input.ClientID,
 		ClientSecretEnc: clientSecretEnc,
 		AuthSecretHash:  authSecretHash,
+		ClientType:      clientType,
 		Name:            input.Name,
 		RedirectURL:     input.RedirectURL,
 		RedirectURIs:    input.RedirectURIs,

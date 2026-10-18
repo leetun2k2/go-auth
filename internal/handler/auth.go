@@ -29,7 +29,10 @@ type CallbackInput = usecase.CallbackInput
 type CallbackOutput = usecase.CallbackOutput
 type ExchangeInput = usecase.ExchangeInput
 type ExchangeOutput = usecase.ExchangeOutput
+type RefreshInput = usecase.RefreshInput
+type RefreshOutput = usecase.RefreshOutput
 type LogoutInput = usecase.LogoutInput
+type LogoutAllInput = usecase.LogoutAllInput
 type MeInput = usecase.MeInput
 type MeOutput = usecase.MeOutput
 type UpdateProfileInput = usecase.UpdateProfileInput
@@ -55,6 +58,10 @@ func (h *Handler) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeO
 	return h.usecase.Exchange(ctx, input)
 }
 
+func (h *Handler) Refresh(ctx context.Context, input *RefreshInput) (RefreshOutput, error) {
+	return h.usecase.Refresh(ctx, input)
+}
+
 func (h *Handler) Me(ctx context.Context, input *MeInput) (MeOutput, error) {
 	return h.usecase.Me(ctx, input)
 }
@@ -65,4 +72,8 @@ func (h *Handler) UpdateProfile(ctx context.Context, input *UpdateProfileInput) 
 
 func (h *Handler) Logout(ctx context.Context, input *LogoutInput) error {
 	return h.usecase.Logout(ctx, input)
+}
+
+func (h *Handler) LogoutAll(ctx context.Context, input *LogoutAllInput) error {
+	return h.usecase.LogoutAll(ctx, input)
 }

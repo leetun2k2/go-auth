@@ -9,28 +9,38 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// ClientTypeWeb is a confidential registration whose own backend holds
+// AuthSecretHash; ClientTypeMobile is a public registration (no backend
+// secret) that authenticates with PKCE alone.
+const (
+	ClientTypeWeb    = "web"
+	ClientTypeMobile = "mobile"
+)
+
 // Client is one OAuth app registration at one provider (Google/GitHub) for
-// one website. ClientID is the provider-issued public identifier;
-// ClientSecretEnc is the provider's OAuth app secret, encrypted; and
-// AuthSecretHash authenticates the website's own backend calling this
-// service, separate from the provider secret.
+// one website or app. ClientID is the provider-issued public identifier;
+// ClientSecretEnc is the provider's OAuth app secret, encrypted. AuthSecretHash
+// authenticates the registration's own backend calling this service, separate
+// from the provider secret; it is set for ClientTypeWeb and nil for
+// ClientTypeMobile, which has no backend secret to hold.
 type Client struct {
 	ID              uuid.UUID
 	Provider        string
 	ClientID        string
 	ClientSecretEnc string
-	AuthSecretHash  string
+	AuthSecretHash  *string
+	ClientType      string
 	Name            string
 	RedirectURL     string
 	RedirectURIs    []string
 	Enabled         bool
 }
 
-const clientColumns = `id, provider, client_id, client_secret_enc, auth_secret_hash, name, redirect_url, redirect_uris, enabled`
+const clientColumns = `id, provider, client_id, client_secret_enc, auth_secret_hash, client_type, name, redirect_url, redirect_uris, enabled`
 
 func scanClient(row pgx.Row) (*Client, error) {
 	var c Client
-	err := row.Scan(&c.ID, &c.Provider, &c.ClientID, &c.ClientSecretEnc, &c.AuthSecretHash,
+	err := row.Scan(&c.ID, &c.Provider, &c.ClientID, &c.ClientSecretEnc, &c.AuthSecretHash, &c.ClientType,
 		&c.Name, &c.RedirectURL, &c.RedirectURIs, &c.Enabled)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -69,13 +79,14 @@ func (r *Repository) GetClientByID(ctx context.Context, id uuid.UUID) (*Client, 
 
 // UpsertClient inserts a registration or, when (provider, client_id) already
 // exists, replaces its name, secrets, and redirect settings. The upsert
-// preserves the row's UUID. Secrets must already be encrypted/hashed by
-// callers: the plaintext provider secret and backend auth secret are never
-// passed here.
+// preserves the row's UUID and, since client_type is immutable after
+// registration, never changes an existing row's type -- only the initial
+// insert sets it. Secrets must already be encrypted/hashed by callers: the
+// plaintext provider secret and backend auth secret are never passed here.
 func (r *Repository) UpsertClient(ctx context.Context, c Client) error {
 	const query = `
-INSERT INTO clients (id, provider, client_id, client_secret_enc, auth_secret_hash, name, redirect_url, redirect_uris, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO clients (id, provider, client_id, client_secret_enc, auth_secret_hash, client_type, name, redirect_url, redirect_uris, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (provider, client_id) DO UPDATE
 SET client_secret_enc = EXCLUDED.client_secret_enc,
     auth_secret_hash   = EXCLUDED.auth_secret_hash,
@@ -90,7 +101,7 @@ SET client_secret_enc = EXCLUDED.client_secret_enc,
 		return fmt.Errorf("generate client id: %w", err)
 	}
 
-	if _, err := r.db.Exec(ctx, query, id, c.Provider, c.ClientID, c.ClientSecretEnc, c.AuthSecretHash,
+	if _, err := r.db.Exec(ctx, query, id, c.Provider, c.ClientID, c.ClientSecretEnc, c.AuthSecretHash, c.ClientType,
 		c.Name, c.RedirectURL, c.RedirectURIs, c.Enabled); err != nil {
 		return fmt.Errorf("upsert client %q/%q: %w", c.Provider, c.ClientID, err)
 	}

@@ -23,3 +23,19 @@ WHERE id = $1 AND client_ref = $2 AND revoked_at IS NULL`
 
 	return nil
 }
+
+// RevokeAllSessionsForUser revokes every active session for userID, across
+// every client registration (web and mobile). Idempotent: a user with no
+// active sessions matches zero rows and is not an error.
+func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID uuid.UUID) error {
+	const query = `
+UPDATE sessions
+SET revoked_at = now(), updated_at = now()
+WHERE user_id = $1 AND revoked_at IS NULL`
+
+	if _, err := r.db.Exec(ctx, query, userID); err != nil {
+		return fmt.Errorf("revoke all sessions for user: %w", err)
+	}
+
+	return nil
+}

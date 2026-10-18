@@ -57,3 +57,30 @@ func (h *Service) Logout(ctx context.Context, input *LogoutInput) error {
 	h.logAuthEvent(ctx, client.ClientID, "", observability.StageLogout, observability.StatusSuccess)
 	return nil
 }
+
+// LogoutAllInput is the client credentials and raw Authorization header for
+// POST /api/auth/v1/logout-all.
+type LogoutAllInput struct {
+	ClientCredentials   credential.Credentials
+	Provider            string
+	AuthorizationHeader string
+}
+
+// LogoutAll requires a currently valid access token (spec: an active access
+// session, not merely a live refresh token), derives the user from that
+// validated session -- never a caller-supplied ID -- and revokes every
+// active session for that user across every client registration.
+func (h *Service) LogoutAll(ctx context.Context, input *LogoutAllInput) error {
+	session, err := h.authenticateSession(ctx, input.Provider, input.ClientCredentials, input.AuthorizationHeader)
+	if err != nil {
+		return err
+	}
+
+	if err := h.repo.RevokeAllSessionsForUser(ctx, session.User.ID); err != nil {
+		h.logAuthEvent(ctx, input.ClientCredentials.ClientID, "", observability.StageLogout, observability.StatusFailure)
+		return fmt.Errorf("revoke all sessions for user: %w", err)
+	}
+
+	h.logAuthEvent(ctx, input.ClientCredentials.ClientID, "", observability.StageLogout, observability.StatusSuccess)
+	return nil
+}

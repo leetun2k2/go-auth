@@ -30,7 +30,10 @@ type CallbackInput = service.CallbackInput
 type CallbackOutput = service.CallbackOutput
 type ExchangeInput = service.ExchangeInput
 type ExchangeOutput = service.ExchangeOutput
+type RefreshInput = service.RefreshInput
+type RefreshOutput = service.RefreshOutput
 type LogoutInput = service.LogoutInput
+type LogoutAllInput = service.LogoutAllInput
 type MeInput = service.MeInput
 type MeOutput = service.MeOutput
 type UpdateProfileInput = service.UpdateProfileInput
@@ -56,6 +59,10 @@ func (u *Usecase) Exchange(ctx context.Context, input *ExchangeInput) (ExchangeO
 	return u.service.Exchange(ctx, input)
 }
 
+func (u *Usecase) Refresh(ctx context.Context, input *RefreshInput) (RefreshOutput, error) {
+	return u.service.Refresh(ctx, input)
+}
+
 func (u *Usecase) Me(ctx context.Context, input *MeInput) (MeOutput, error) {
 	return u.service.Me(ctx, input)
 }
@@ -66,6 +73,10 @@ func (u *Usecase) UpdateProfile(ctx context.Context, input *UpdateProfileInput) 
 
 func (u *Usecase) Logout(ctx context.Context, input *LogoutInput) error {
 	return u.service.Logout(ctx, input)
+}
+
+func (u *Usecase) LogoutAll(ctx context.Context, input *LogoutAllInput) error {
+	return u.service.LogoutAll(ctx, input)
 }
 
 func (u *Usecase) AuthenticateSessionUser(ctx context.Context, authHeader, clientID, clientSecret, provider string) (uuid.UUID, uuid.UUID, string, error) {

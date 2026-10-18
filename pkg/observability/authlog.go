@@ -13,6 +13,7 @@ const (
 	StageOAuthStart      = "oauth_start"
 	StageCallback        = "callback"
 	StageExchange        = "exchange"
+	StageRefresh         = "refresh"
 	StageSessionValidate = "session_validate"
 	StageLogout          = "logout"
 )

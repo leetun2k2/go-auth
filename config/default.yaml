@@ -32,15 +32,22 @@ redis:
 # Per-registration OAuth provider credentials (Google/GitHub) live in the
 # clients table, not here -- each row is one provider OAuth app
 # registration, identified by its own provider-issued client_id.
-# Environment overrides: AUTH__ISSUER, AUTH__SESSION_TTL, AUTH__CODE_TTL,
-# AUTH__LOGIN_ATTEMPT_TTL, AUTH__PROVIDER_SECRET_KEY,
-# AUTH__SIGNING_KEY__KEY_ID, AUTH__SIGNING_KEY__PRIVATE_KEY_PEM (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH).
+# Environment overrides: AUTH__ISSUER, AUTH__SESSION_TTL, AUTH__ACCESS_TOKEN_TTL,
+# AUTH__REFRESH_TOKEN_TTL, AUTH__CODE_TTL, AUTH__LOGIN_ATTEMPT_TTL,
+# AUTH__PROVIDER_SECRET_KEY, AUTH__SIGNING_KEY__KEY_ID,
+# AUTH__SIGNING_KEY__PRIVATE_KEY_PEM (or AUTH__SIGNING_KEY__PRIVATE_KEY_PATH).
 # The provider secret key and the signing key have no defaults: they must
 # come from environment variables or an approved secret store, never from
 # this file.
+#
+# session_ttl is a deprecated alias for refresh_token_ttl, kept only so an
+# unset refresh_token_ttl falls back to it; it no longer bounds the access
+# JWT lifetime (access_token_ttl does).
 auth:
   issuer: ""
   session_ttl: 720h
+  access_token_ttl: 15m
+  refresh_token_ttl: 720h
   code_ttl: 2m
   login_attempt_ttl: 10m
   provider_secret_key: ""
