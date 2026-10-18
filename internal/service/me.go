@@ -46,6 +46,7 @@ type authenticatedSession struct {
 	User       *repository.User
 	Audience   string
 	IdentityID string
+	SessionID  uuid.UUID
 }
 
 // authenticateSession authenticates the calling backend via provider and
@@ -102,7 +103,18 @@ func (h *Service) authenticateSession(ctx context.Context, provider string, clie
 		User:       user,
 		Audience:   client.ClientID,
 		IdentityID: identityIDStr,
+		SessionID:  sessionID,
 	}, nil
+}
+
+// AuthenticateSessionUser authenticates a session for IAM or callers.
+func (h *Service) AuthenticateSessionUser(ctx context.Context, authHeader, clientID, clientSecret, provider string) (uuid.UUID, uuid.UUID, string, error) {
+	clientCreds := credential.Credentials{ClientID: clientID, ClientSecret: clientSecret}
+	session, err := h.authenticateSession(ctx, provider, clientCreds, authHeader)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, "", err
+	}
+	return session.User.ID, session.SessionID, session.User.CanonicalEmail, nil
 }
 
 // Me resolves the current authenticated user from a session JWT

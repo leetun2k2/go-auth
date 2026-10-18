@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/leetun2k2/go-auth/config"
+	"github.com/leetun2k2/go-auth/internal/bootstrap"
 	"github.com/leetun2k2/go-auth/internal/transport"
 	"github.com/leetun2k2/go-bedrock/logx"
 	"github.com/leetun2k2/go-bedrock/postgresx"
@@ -98,6 +99,25 @@ func run(_ []string) error {
 }
 
 func main() {
+	ctx := context.Background()
+
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "bootstrap-client":
+			if err := bootstrap.RunBootstrapClient(ctx, os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "bootstrap-admin":
+			if err := bootstrap.RunBootstrapAdmin(ctx, os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	if err := run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

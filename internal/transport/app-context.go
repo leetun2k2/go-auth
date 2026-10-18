@@ -1,11 +1,13 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/leetun2k2/go-auth/config"
 	"github.com/leetun2k2/go-auth/internal/handler"
+	"github.com/leetun2k2/go-auth/internal/iam"
 	"github.com/leetun2k2/go-auth/internal/repository"
 	"github.com/leetun2k2/go-auth/internal/service"
 	"github.com/leetun2k2/go-auth/internal/usecase"
@@ -15,9 +17,10 @@ import (
 )
 
 type Application struct {
-	Handler *handler.Handler
-	Config  *config.Config
-	Logger  *logx.Logger
+	Handler    *handler.Handler
+	IAMHandler *iam.Handler
+	Config     *config.Config
+	Logger     *logx.Logger
 }
 
 func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, redis *redis.Client) (*Application, error) {
@@ -31,9 +34,24 @@ func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, r
 	authService := service.New(cfg, logger, repo, tokenManager)
 	authUsecase := usecase.New(authService)
 
+	iamRepo := iam.NewRepository(db)
+	iamAuthFunc := func(ctx context.Context, authHeader, clientID, clientSecret, provider string) (*iam.AuthenticatedUser, error) {
+		userID, sessionID, email, err := authUsecase.AuthenticateSessionUser(ctx, authHeader, clientID, clientSecret, provider)
+		if err != nil {
+			return nil, err
+		}
+		return &iam.AuthenticatedUser{
+			UserID:    userID,
+			SessionID: sessionID,
+			Email:     email,
+		}, nil
+	}
+	iamHandler := iam.NewHandler(iamRepo, logger, iamAuthFunc)
+
 	return &Application{
-		Handler: handler.New(authUsecase),
-		Config:  cfg,
-		Logger:  logger,
+		Handler:    handler.New(authUsecase),
+		IAMHandler: iamHandler,
+		Config:     cfg,
+		Logger:     logger,
 	}, nil
 }

@@ -11,41 +11,11 @@ import (
 	"github.com/leetun2k2/go-bedrock/authx/credential"
 )
 
-// adminRoleClaim is the custom claim admin endpoints require, set to
-// adminRoleValue. aud identifies who a token is for, not what it's allowed
-// to do, so authorization is checked via this claim instead of audience.
-// Today this only checks the token is a valid, unexpired JWT signed by our
-// own signing key carrying this claim -- no admin account/role system yet.
-// This is a temporary gate to be upgraded later with real admin identities
-// and authorization.
-const (
-	adminRoleClaim = "role"
-	adminRoleValue = "admin"
-)
-
 // Errors returned by the admin client/provider management endpoints map to
-// HTTP 400 (ErrInvalidAdminRequest) or HTTP 401 (ErrUnauthenticated) at the
-// transport layer.
+// HTTP 400 (ErrInvalidAdminRequest) at the transport layer. Authentication
+// and the admin role requirement are enforced by the transport-level
+// session+admin middleware before this method is called.
 var ErrInvalidAdminRequest = errors.New("invalid admin request")
-
-// requireAdminJWT verifies the Authorization header carries a valid JWT,
-// signed by our own signing key and addressed to this service (aud ==
-// issuer, since an admin token is for go-auth itself, not a product
-// client), with the admin role claim set.
-func (h *Service) requireAdminJWT(authHeader string) error {
-	token, ok := credential.ExtractBearerToken(authHeader)
-	if !ok {
-		return ErrUnauthenticated
-	}
-	claims, err := h.tokenManager.Verify(token, h.tokenManager.Issuer())
-	if err != nil {
-		return ErrUnauthenticated
-	}
-	if claims.GetString(adminRoleClaim) != adminRoleValue {
-		return ErrUnauthenticated
-	}
-	return nil
-}
 
 // UpsertClientInput creates or replaces one OAuth app registration, for
 // PUT /api/admin/v1/clients/:provider/:client_id. ClientSecret is the
@@ -54,15 +24,14 @@ func (h *Service) requireAdminJWT(authHeader string) error {
 // Enabled is nil when omitted from the request body, which defaults to
 // true; an explicit false disables the registration.
 type UpsertClientInput struct {
-	AuthorizationHeader string
-	Provider            string
-	ClientID            string
-	Name                string
-	ClientSecret        string
-	AuthSecret          string
-	RedirectURL         string
-	RedirectURIs        []string
-	Enabled             *bool
+	Provider     string
+	ClientID     string
+	Name         string
+	ClientSecret string
+	AuthSecret   string
+	RedirectURL  string
+	RedirectURIs []string
+	Enabled      *bool
 }
 
 // UpsertClient encrypts the provider secret, hashes the backend auth
@@ -70,10 +39,6 @@ type UpsertClientInput struct {
 // again for the same (provider, client_id) replaces every field and
 // preserves the row's UUID.
 func (h *Service) UpsertClient(ctx context.Context, input *UpsertClientInput) error {
-	if err := h.requireAdminJWT(input.AuthorizationHeader); err != nil {
-		return err
-	}
-
 	providerName := strings.ToLower(strings.TrimSpace(input.Provider))
 	if providerName != "google" && providerName != "github" {
 		return ErrUnsupportedProvider

@@ -42,7 +42,11 @@ func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 
 	admin := engine.Group("/api/admin/v1")
 	{
-		admin.PUT("/clients/:provider/:client_id", app.upsertClient)
+		if app.IAMHandler != nil {
+			admin.PUT("/clients/:provider/:client_id",
+				app.IAMHandler.AuthMiddleware(), app.IAMHandler.RequireAdmin(), app.upsertClient)
+			app.IAMHandler.RegisterRoutes(admin)
+		}
 	}
 	return nil
 }
@@ -312,21 +316,18 @@ func (app *Application) upsertClient(c *gin.Context) {
 	}
 
 	input := handler.UpsertClientInput{
-		AuthorizationHeader: c.GetHeader("Authorization"),
-		Provider:            c.Param("provider"),
-		ClientID:            c.Param("client_id"),
-		Name:                req.Name,
-		ClientSecret:        req.ClientSecret,
-		AuthSecret:          req.AuthSecret,
-		RedirectURL:         req.RedirectURL,
-		RedirectURIs:        req.RedirectURIs,
-		Enabled:             req.Enabled,
+		Provider:     c.Param("provider"),
+		ClientID:     c.Param("client_id"),
+		Name:         req.Name,
+		ClientSecret: req.ClientSecret,
+		AuthSecret:   req.AuthSecret,
+		RedirectURL:  req.RedirectURL,
+		RedirectURIs: req.RedirectURIs,
+		Enabled:      req.Enabled,
 	}
 
 	if err := app.Handler.UpsertClient(ctx, &input); err != nil {
 		switch {
-		case errors.Is(err, handler.ErrUnauthenticated):
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		case errors.Is(err, handler.ErrUnsupportedProvider), errors.Is(err, handler.ErrInvalidAdminRequest):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		default:

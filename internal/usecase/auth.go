@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/leetun2k2/go-auth/internal/service"
 )
 
@@ -65,4 +66,8 @@ func (u *Usecase) UpdateProfile(ctx context.Context, input *UpdateProfileInput) 
 
 func (u *Usecase) Logout(ctx context.Context, input *LogoutInput) error {
 	return u.service.Logout(ctx, input)
+}
+
+func (u *Usecase) AuthenticateSessionUser(ctx context.Context, authHeader, clientID, clientSecret, provider string) (uuid.UUID, uuid.UUID, string, error) {
+	return u.service.AuthenticateSessionUser(ctx, authHeader, clientID, clientSecret, provider)
 }
