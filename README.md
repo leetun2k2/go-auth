@@ -18,10 +18,11 @@ flowchart LR
 Go, Gin, PostgreSQL, and shared `go-bedrock` modules. Redis is optional and
 disabled by default. The module and Docker build declare Go 1.27.1.
 
-The simplified schema has nine tables: clients, users, profiles, external
-identities, login attempts, auth codes, sessions, roles, and user-role links.
-One client row is one provider OAuth app; `(provider, client_id)` identifies it.
-`client_ref` binds attempts, codes, and sessions to its UUID.
+The consolidated schema defines ten tables in the dedicated `auth` schema: clients,
+users, profiles, external identities, login attempts, auth codes, sessions,
+refresh tokens, roles, and user-role links. One client row is one provider OAuth app;
+`(provider, client_id)` identifies it. `client_ref` binds attempts, codes, and sessions
+to its UUID.
 
 The auth flow and admin API use this simplified client model. The admin
 implementation in `internal/iam` has been fully aligned with the 9-table schema
@@ -50,10 +51,11 @@ Use [.env.example](.env.example) as a variable reference. The app reads process
 environment; it does not load `.env` itself. Provider settings belong in
 `clients`.
 
-Set `POSTGRES__URL`, `AUTH__ISSUER`, `AUTH__PROVIDER_SECRET_KEY`, and
-`AUTH__SIGNING_KEY__KEY_ID` plus the signing key path or PEM variable. Keep real
-values outside the repo. Apply SQL only to an identified target; never reset an
-existing database to match the initial migration.
+Set `POSTGRES__URL` (including `?search_path=auth` when sharing a database),
+`AUTH__ISSUER`, `AUTH__PROVIDER_SECRET_KEY`, and `AUTH__SIGNING_KEY__KEY_ID` plus
+the signing key path or PEM variable. Keep real values outside the repo. Apply SQL
+only to an identified target; never reset an existing database to match the initial
+migration.
 
 ```sh
 go build ./...
