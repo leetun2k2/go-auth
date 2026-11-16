@@ -51,7 +51,9 @@ For Go changes, format changed files, run `go build ./...` and `go vet ./...`,
 then exercise relevant HTTP/SQL flows on a disposable database. No new unit
 tests. Report checks that could not run. For docs, check Markdown and links.
 
-Coordinate breaking APIs with `web-admin-auth`, `web-admin`, and `infra`.
+Coordinate breaking APIs with `web-admin` and `infra`. Browser auth is hosted
+in go-auth; keep cookies, CSRF, OAuth flow state, and client credentials in its
+server-side browser boundary. Preserve token APIs for non-browser consumers.
 Update contract and deployment docs in the same phase. Never apply the initial
 down migration, delete volumes, or guess a live target. Identify target/data
 state and prepare rollback before deployment.

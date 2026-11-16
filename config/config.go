@@ -83,6 +83,7 @@ type AuthConfig struct {
 //	REDIS__ENABLED=true
 //	REDIS__CONFIG__ADDR=127.0.0.1:6379
 type Config struct {
+	Browser    *BrowserConfig     `mapstructure:"browser"`
 	Logger     *logx.LoggerConfig `json:"logger" mapstructure:"logger" yaml:"logger"`
 	Server     *serverx.Config    `json:"server" mapstructure:"server" yaml:"server"`
 	RestfulApi *restapix.Config   `json:"restful_api" mapstructure:"restful_api" yaml:"restful_api"`
@@ -101,6 +102,7 @@ func Load() *Config {
 	v.AutomaticEnv()
 
 	cfg := &Config{
+		Browser:    &BrowserConfig{},
 		Logger:     &logx.LoggerConfig{},
 		Server:     &serverx.Config{},
 		RestfulApi: &restapix.Config{},

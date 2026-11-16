@@ -26,6 +26,12 @@ func extractBearerClientCredentials(r *http.Request) (credential.Credentials, er
 
 func (app *Application) RegisterRestfulApi(engine *gin.Engine) error {
 	engine.Use(middleware.CorrelationID)
+	if app.Browser != nil {
+		engine.Use(app.browserBoundary)
+		engine.GET("/auth/callback", app.browserCallback)
+		engine.GET("/api/auth/v1/csrf", app.browserCSRF)
+		engine.POST("/api/auth/v1/login/:provider", app.browserLogin)
+	}
 
 	engine.GET("/health", app.health)
 	engine.GET("/ready", app.ready)
@@ -191,6 +197,10 @@ type refreshRequest struct {
 }
 
 func (app *Application) refresh(c *gin.Context) {
+	if c.GetBool("browser_auth") {
+		app.browserRefresh(c)
+		return
+	}
 	ctx := c.Request.Context()
 	c.Header("Cache-Control", "no-store")
 	c.Header("Pragma", "no-cache")
@@ -324,6 +334,10 @@ func (app *Application) updateProfile(c *gin.Context) {
 }
 
 func (app *Application) logout(c *gin.Context) {
+	if c.GetBool("browser_auth") {
+		app.browserLogout(c)
+		return
+	}
 	ctx := c.Request.Context()
 	c.Header("Cache-Control", "no-store")
 
@@ -378,6 +392,9 @@ func (app *Application) logoutAll(c *gin.Context) {
 		return
 	}
 
+	if c.GetBool("browser_auth") {
+		app.Browser.clearSession(c)
+	}
 	c.Status(http.StatusNoContent)
 }
 

@@ -55,3 +55,14 @@ auth:
     key_id: ""
     private_key_pem: ""
     private_key_path: ""
+
+# Optional same-origin browser authentication boundary.
+browser:
+  enabled: false
+  origin: ""
+  provider: "google"
+  client_id: ""
+  client_secret: ""
+  cookie_key: ""
+  secure: true
+  allow_insecure_http: false

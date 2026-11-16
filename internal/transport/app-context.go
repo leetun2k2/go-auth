@@ -21,9 +21,14 @@ type Application struct {
 	IAMHandler *iam.Handler
 	Config     *config.Config
 	Logger     *logx.Logger
+	Browser    *browserAuth
 }
 
 func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, redis *redis.Client) (*Application, error) {
+	browser, err := newBrowserAuth(cfg.Browser)
+	if err != nil {
+		return nil, fmt.Errorf("configure browser authentication: %w", err)
+	}
 	repo := repository.New(cfg, logger, db, redis)
 
 	tokenManager, err := security.LoadTokenManager(cfg)
@@ -50,6 +55,7 @@ func NewApplication(cfg *config.Config, logger *logx.Logger, db *pgxpool.Pool, r
 
 	return &Application{
 		Handler:    handler.New(authUsecase),
+		Browser:    browser,
 		IAMHandler: iamHandler,
 		Config:     cfg,
 		Logger:     logger,

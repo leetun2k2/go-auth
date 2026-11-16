@@ -7,8 +7,8 @@ technical capabilities.
 
 ```mermaid
 flowchart LR
-  UI[web-admin] --> BFF[web-admin-auth]
-  BFF --> Auth[go-auth]
+  UI[web-admin] --> Gateway[Nginx gateway]
+  Gateway --> Auth[go-auth]
   Auth --> DB[(PostgreSQL)]
   Auth --> OAuth[Google / GitHub]
 ```
@@ -68,6 +68,22 @@ go run ./cmd/server bootstrap-admin --help
 ## Delivery
 
 Use the existing [infra](../infra/README.md) Compose stack and
-[web-admin](../web-admin/README.md) with its cookie adapter. Antigravity (agy)
+[web-admin](../web-admin/README.md) with browser cookie authentication enabled in go-auth. Antigravity (agy)
 orchestrates task breakdown, phase gates, and review; Claude implements bounded tasks.
 See the [execution status](specs/2026-10-17-smb-auth-core/04-execution-status.md).
+
+## Browser authentication
+
+The optional browser boundary replaces the separate `web-admin-auth` service.
+It handles HttpOnly access/refresh cookies, encrypted OAuth flow state, S256 PKCE,
+signed CSRF protection, and server-configured registration credentials while
+calling the existing auth handlers directly. IAM still verifies live sessions
+and current admin roles. Non-browser token APIs remain available.
+
+Enable `BROWSER__ENABLED` only after supplying the exact browser origin, web
+registration client ID/backend auth secret, and an independent 32-byte base64
+cookie key. Secure cookies are required for HTTPS. Explicitly insecure local HTTP
+requires both `BROWSER__SECURE=false` and `BROWSER__ALLOW_INSECURE_HTTP=true`.
+Keep `<origin>/auth/callback` in the registration's approved product redirects.
+See the [browser authentication contract](specs/2026-11-15-browser-auth-merge/browser-auth.md)
+for routes, configuration, and compatibility. No schema migration is required.
